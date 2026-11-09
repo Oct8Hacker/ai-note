@@ -19,6 +19,7 @@ import (
 	"ainote/internal/health"
 	"ainote/internal/jobs"
 	"ainote/internal/logging"
+	"ainote/internal/queue"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -54,6 +55,16 @@ func run() error {
 	if err := jobs.Migrate(ctx, cfg.DatabaseURL); err != nil {
 		return fmt.Errorf("migrate: %w", err)
 	}
+
+	mq, err := setupBroker(ctx, cfg, log)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := mq.Close(); err != nil {
+			log.Warn("amqp close", "err", err)
+		}
+	}()
 
 	// pgxpool and redis connect lazily; amqp is dialed per probe below so
 	// /healthz reports degraded (not a crash) when a dependency is down.
@@ -144,4 +155,48 @@ func probeRabbit(url string, heartbeat time.Duration) error {
 		return err
 	}
 	return nil
+}
+
+// setupBroker dials RabbitMQ, declares the topology and applies the
+// delivery-limit policy, retrying the management API for up to ~20 s while it
+// starts.
+func setupBroker(ctx context.Context, cfg config.Gateway, log *slog.Logger) (*queue.Conn, error) {
+	conn, err := queue.Dial(ctx, cfg.AMQPURL, cfg.AMQPHeartbeat, log)
+	if err != nil {
+		return nil, fmt.Errorf("rabbitmq: %w", err)
+	}
+	fail := func(err error) (*queue.Conn, error) {
+		if cerr := conn.Close(); cerr != nil {
+			log.Warn("amqp close", "err", cerr)
+		}
+		return nil, err
+	}
+	ch, err := conn.Channel(ctx)
+	if err != nil {
+		return fail(fmt.Errorf("rabbitmq channel: %w", err))
+	}
+	derr := queue.Declare(ch, queue.Topology{RetryDelays: cfg.RetryDelays, DeferDelay: cfg.DeferDelay})
+	if cerr := ch.Close(); cerr != nil {
+		log.Warn("amqp channel close", "err", cerr)
+	}
+	if derr != nil {
+		return fail(derr)
+	}
+
+	const attempts = 10
+	for i := 1; ; i++ {
+		err = queue.ApplyDeliveryLimitPolicy(ctx, cfg.RabbitMgmtURL, cfg.RabbitUser, cfg.RabbitPass, cfg.DeliveryLimit)
+		if err == nil {
+			return conn, nil
+		}
+		if i == attempts {
+			return fail(fmt.Errorf("delivery-limit policy after %d attempts: %w", attempts, err))
+		}
+		log.Warn("delivery-limit policy not applied yet", "attempt", i, "err", err)
+		select {
+		case <-ctx.Done():
+			return fail(ctx.Err())
+		case <-time.After(2 * time.Second):
+		}
+	}
 }
