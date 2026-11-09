@@ -15,7 +15,9 @@ import (
 const batchSize = 100
 
 // Relay publishes unpublished outbox rows to jobs.work and marks them
-// published.
+// published. Delivery is at-least-once: a failure after a confirmed publish
+// but before the mark commits republishes the row, so consumers must be
+// idempotent.
 type Relay struct {
 	repo     *jobs.Repo
 	pub      *queue.Publisher
