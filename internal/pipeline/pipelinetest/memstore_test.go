@@ -47,3 +47,40 @@ func TestFakeStageAndDeps(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 2, f.CallCount())
 }
+
+func TestDepsRecordWarningsAndProgress(t *testing.T) {
+	s := NewMemStore()
+	d := TestDeps(s)
+	ts := 12.5
+	d.Warn(pipeline.Warning{Code: pipeline.WarnFrameNotRelevant, TimestampSec: &ts})
+	ts2 := 12.5
+	d.Warn(pipeline.Warning{Code: pipeline.WarnFrameNotRelevant, TimestampSec: &ts2})
+	d.Progress(10)
+	d.Progress(50)
+	ws, err := s.Warnings(context.Background(), uuid.New())
+	require.NoError(t, err)
+	require.Len(t, ws, 1)
+	require.Equal(t, []int{10, 50}, s.Progress())
+}
+
+func TestFakeStageCountsBeforeHook(t *testing.T) {
+	started, release := make(chan struct{}), make(chan struct{})
+	f := &FakeStage{Status: pipeline.StatusTranscribing, Hook: func(context.Context) error {
+		close(started)
+		<-release
+		return nil
+	}}
+	done := make(chan struct{})
+	go func() { _, _ = f.Run(context.Background(), &pipeline.Job{}, pipeline.Deps{}); close(done) }()
+	<-started
+	require.Equal(t, 1, f.CallCount())
+	close(release)
+	<-done
+}
+
+func TestFakeStageReturnsResult(t *testing.T) {
+	f := &FakeStage{Result: pipeline.StageResult{PageURL: "u"}}
+	r, err := f.Run(context.Background(), &pipeline.Job{}, pipeline.Deps{})
+	require.NoError(t, err)
+	require.Equal(t, "u", r.PageURL)
+}

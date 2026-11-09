@@ -28,6 +28,7 @@ type FakeStage struct {
 	Results []error // returned in order, then nil
 	Hook    func(ctx context.Context) error
 	Calls   int
+	Result  pipeline.StageResult // returned when the call succeeds
 
 	mu sync.Mutex
 }
@@ -35,19 +36,19 @@ type FakeStage struct {
 func (f *FakeStage) Name() pipeline.Status { return f.Status }
 
 func (f *FakeStage) Run(ctx context.Context, _ *pipeline.Job, _ pipeline.Deps) (pipeline.StageResult, error) {
+	f.mu.Lock()
+	n := f.Calls
+	f.Calls++
+	f.mu.Unlock()
 	if f.Hook != nil {
 		if err := f.Hook(ctx); err != nil {
 			return pipeline.StageResult{}, err
 		}
 	}
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	var err error
-	if f.Calls < len(f.Results) {
-		err = f.Results[f.Calls]
+	if n < len(f.Results) && f.Results[n] != nil {
+		return pipeline.StageResult{}, f.Results[n]
 	}
-	f.Calls++
-	return pipeline.StageResult{}, err
+	return f.Result, nil
 }
 
 // CallCount is the concurrency-safe read of Calls.
@@ -57,9 +58,10 @@ func (f *FakeStage) CallCount() int {
 	return f.Calls
 }
 
-// TestDeps returns Deps wired with no-op fakes around store.
+// TestDeps returns Deps wired with no-op fakes around store. When store is a
+// *MemStore, Warn and Progress are recorded on it.
 func TestDeps(store pipeline.CheckpointStore) pipeline.Deps {
-	return pipeline.Deps{
+	d := pipeline.Deps{
 		Store:    store,
 		Limiter:  NoopLimiter{},
 		Faults:   NoFaults{},
@@ -67,4 +69,9 @@ func TestDeps(store pipeline.CheckpointStore) pipeline.Deps {
 		Warn:     func(pipeline.Warning) {},
 		Log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
+	if ms, ok := store.(*MemStore); ok {
+		d.Progress = ms.recordProgress
+		d.Warn = ms.AddWarning
+	}
+	return d
 }

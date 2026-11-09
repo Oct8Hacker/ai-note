@@ -23,3 +23,8 @@ func TestRetryableUnwrap(t *testing.T) {
 	inner := errors.New("inner")
 	require.ErrorIs(t, &RetryableError{Code: "X", Err: inner}, inner)
 }
+
+func TestNilError(t *testing.T) {
+	require.Equal(t, ClassRetryable, Classify(nil))
+	require.Equal(t, "INTERNAL", ErrorCode(nil))
+}

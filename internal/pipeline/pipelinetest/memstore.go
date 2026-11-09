@@ -21,6 +21,7 @@ type MemStore struct {
 	frames    map[uuid.UUID]map[int]pipeline.Frame
 	warnings  map[uuid.UUID][]pipeline.Warning
 	meta      map[uuid.UUID]*pipeline.Job
+	progress  []int
 }
 
 var _ pipeline.CheckpointStore = (*MemStore)(nil)
@@ -142,11 +143,49 @@ func (m *MemStore) SetNotionPage(_ context.Context, jobID uuid.UUID, pageID, url
 	return nil
 }
 
-// Warnings returns warnings recorded by the store (none are recorded by this fake).
-func (m *MemStore) Warnings(_ context.Context, jobID uuid.UUID) ([]pipeline.Warning, error) {
+// AddWarning records w, deduplicated by (code, timestamp_sec). The fake is
+// single-job-agnostic, so warnings are kept under the zero job ID and also
+// returned for any job ID by Warnings.
+func (m *MemStore) AddWarning(w pipeline.Warning) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return append([]pipeline.Warning(nil), m.warnings[jobID]...), nil
+	for _, e := range m.warnings[uuid.Nil] {
+		if e.Code != w.Code {
+			continue
+		}
+		if e.TimestampSec == nil && w.TimestampSec == nil {
+			return
+		}
+		if e.TimestampSec != nil && w.TimestampSec != nil && *e.TimestampSec == *w.TimestampSec {
+			return
+		}
+	}
+	c := w
+	if w.TimestampSec != nil {
+		t := *w.TimestampSec
+		c.TimestampSec = &t
+	}
+	m.warnings[uuid.Nil] = append(m.warnings[uuid.Nil], c)
+}
+
+// Warnings returns the warnings recorded via AddWarning.
+func (m *MemStore) Warnings(_ context.Context, _ uuid.UUID) ([]pipeline.Warning, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]pipeline.Warning(nil), m.warnings[uuid.Nil]...), nil
+}
+
+// Progress returns every stagePct reported through TestDeps, in order.
+func (m *MemStore) Progress() []int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]int(nil), m.progress...)
+}
+
+func (m *MemStore) recordProgress(pct int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.progress = append(m.progress, pct)
 }
 
 // Job returns a copy of the job metadata recorded via the Set* methods (test inspection).
