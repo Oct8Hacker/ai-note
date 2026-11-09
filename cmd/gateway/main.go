@@ -19,6 +19,7 @@ import (
 	"ainote/internal/health"
 	"ainote/internal/jobs"
 	"ainote/internal/logging"
+	"ainote/internal/outbox"
 	"ainote/internal/queue"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -27,12 +28,6 @@ import (
 )
 
 var version = "dev"
-
-// noopKicker stands in for the outbox relay (Task A7); jobs still land in the
-// outbox table.
-type noopKicker struct{}
-
-func (noopKicker) Kick() {}
 
 func main() {
 	if err := run(); err != nil {
@@ -101,10 +96,24 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("token sealer: %w", err)
 	}
+	repo := jobs.NewRepo(pool)
+	relay := outbox.NewRelay(repo, queue.NewPublisher(mq, queue.Topology{RetryDelays: cfg.RetryDelays, DeferDelay: cfg.DeferDelay}),
+		cfg.OutboxSweepInterval, log)
+	relayCtx, stopRelay := context.WithCancel(ctx)
+	relayDone := make(chan struct{})
+	go func() {
+		defer close(relayDone)
+		relay.Run(relayCtx)
+	}()
+	defer func() {
+		stopRelay()
+		<-relayDone
+	}()
+
 	apiSrv := api.NewServer(cfg, api.ServerDeps{
-		Jobs:   jobs.NewRepo(pool),
+		Jobs:   repo,
 		Sealer: sealer,
-		Outbox: noopKicker{},
+		Outbox: relay,
 		Health: checker,
 	})
 	srv := &http.Server{
