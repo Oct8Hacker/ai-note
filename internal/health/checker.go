@@ -31,17 +31,27 @@ type Checker struct {
 	Version      string
 }
 
-// runWithTimeout runs fn with a 2s deadline; it returns even if fn ignores ctx.
-func runWithTimeout(ctx context.Context, fn func(context.Context) error) error {
+// callWithTimeout runs fn with a 2s deadline and returns its result over a
+// buffered channel, so a late fn can never touch caller state. It returns even
+// if fn ignores ctx.
+func callWithTimeout[T any](ctx context.Context, fn func(context.Context) (T, error)) (T, error) {
+	type res struct {
+		v   T
+		err error
+	}
 	ctx, cancel := context.WithTimeout(ctx, probeTimeout)
 	defer cancel()
-	done := make(chan error, 1)
-	go func() { done <- fn(ctx) }()
+	ch := make(chan res, 1)
+	go func() {
+		v, err := fn(ctx)
+		ch <- res{v, err}
+	}()
 	select {
-	case err := <-done:
-		return err
+	case r := <-ch:
+		return r.v, r.err
 	case <-ctx.Done():
-		return ctx.Err()
+		var zero T
+		return zero, ctx.Err()
 	}
 }
 
@@ -54,7 +64,7 @@ func (c *Checker) Check(ctx context.Context, deep bool) Report {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			err := runWithTimeout(ctx, p)
+			_, err := callWithTimeout(ctx, func(ctx context.Context) (struct{}, error) { return struct{}{}, p(ctx) })
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
@@ -68,31 +78,19 @@ func (c *Checker) Check(ctx context.Context, deep bool) Report {
 	wg.Wait()
 
 	if c.WorkersAlive != nil {
-		_ = runWithTimeout(ctx, func(ctx context.Context) error {
-			n, err := c.WorkersAlive(ctx)
-			if err == nil {
-				r.WorkersAlive = n
-			}
-			return err
-		})
+		if n, err := callWithTimeout(ctx, c.WorkersAlive); err == nil {
+			r.WorkersAlive = n
+		}
 	}
 	if c.Provider429 != nil {
-		_ = runWithTimeout(ctx, func(ctx context.Context) error {
-			n, err := c.Provider429(ctx)
-			if err == nil {
-				r.Provider429Total = n
-			}
-			return err
-		})
+		if n, err := callWithTimeout(ctx, c.Provider429); err == nil {
+			r.Provider429Total = n
+		}
 	}
 	if deep && c.Doctor != nil {
-		_ = runWithTimeout(ctx, func(ctx context.Context) error {
-			d, err := c.Doctor(ctx)
-			if err == nil {
-				r.Doctor = d
-			}
-			return err
-		})
+		if d, err := callWithTimeout(ctx, c.Doctor); err == nil {
+			r.Doctor = d
+		}
 	}
 	return r
 }

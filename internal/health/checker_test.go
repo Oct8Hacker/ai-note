@@ -66,3 +66,28 @@ func TestWorkersAndDoctor(t *testing.T) {
 	r = c.Check(context.Background(), true)
 	require.Equal(t, 1, r.Doctor["x"])
 }
+
+func TestSlowCallbacksDoNotMutateReport(t *testing.T) {
+	c := &Checker{
+		Probes: okProbes(),
+		WorkersAlive: func(context.Context) (int, error) {
+			time.Sleep(2500 * time.Millisecond)
+			return 9, nil
+		},
+		Provider429: func(context.Context) (int64, error) {
+			time.Sleep(2500 * time.Millisecond)
+			return 9, nil
+		},
+		Doctor: func(context.Context) (map[string]any, error) {
+			time.Sleep(2500 * time.Millisecond)
+			return map[string]any{"late": true}, nil
+		},
+	}
+	start := time.Now()
+	r := c.Check(context.Background(), true)
+	require.Less(t, time.Since(start), 8*time.Second)
+	time.Sleep(1500 * time.Millisecond) // let the slow callbacks finish
+	require.Equal(t, 0, r.WorkersAlive)
+	require.Equal(t, int64(0), r.Provider429Total)
+	require.Nil(t, r.Doctor)
+}
