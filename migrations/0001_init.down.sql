@@ -1,0 +1,5 @@
+DROP TABLE IF EXISTS outbox;
+DROP TABLE IF EXISTS job_events;
+DROP TABLE IF EXISTS job_frames;
+DROP TABLE IF EXISTS job_artifacts;
+DROP TABLE IF EXISTS jobs;

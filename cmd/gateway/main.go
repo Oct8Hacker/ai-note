@@ -16,6 +16,7 @@ import (
 	"ainote/internal/api"
 	"ainote/internal/config"
 	"ainote/internal/health"
+	"ainote/internal/jobs"
 	"ainote/internal/logging"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -42,6 +43,10 @@ func run() error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
+
+	if err := jobs.Migrate(ctx, cfg.Common.DatabaseURL); err != nil {
+		return fmt.Errorf("migrate: %w", err)
+	}
 
 	// pgxpool and redis connect lazily; amqp is dialed per probe below so
 	// /healthz reports degraded (not a crash) when a dependency is down.
