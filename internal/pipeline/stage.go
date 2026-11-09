@@ -11,11 +11,13 @@ import (
 	"github.com/google/uuid"
 )
 
+// Stage is one step of the job pipeline; Name doubles as the job status while it runs.
 type Stage interface {
 	Name() Status
 	Run(ctx context.Context, job *Job, deps Deps) (StageResult, error)
 }
 
+// StageResult carries a stage's output artifact and metadata back to the runner.
 type StageResult struct {
 	ArtifactKind    string // "transcript" | "synthesis" | ""
 	Artifact        any
@@ -26,6 +28,7 @@ type StageResult struct {
 	PageURL         string
 }
 
+// Deps bundles the collaborators handed to every stage run.
 type Deps struct {
 	Store    CheckpointStore
 	Limiter  Limiter
@@ -37,6 +40,7 @@ type Deps struct {
 	Log         *slog.Logger
 }
 
+// CheckpointStore persists stage artifacts, frames and Notion state so a retried job can resume.
 type CheckpointStore interface {
 	SaveArtifact(ctx context.Context, jobID uuid.UUID, kind string, v any) error
 	LoadArtifact(ctx context.Context, jobID uuid.UUID, kind string, v any) (bool, error)
@@ -54,8 +58,10 @@ type Limiter interface {
 	Acquire(ctx context.Context, bucket string, n int) error
 }
 
+// FaultPoint names a place where a Faults implementation may inject a failure.
 type FaultPoint string
 
+// Fault points, one per external dependency plus per-frame capture.
 const (
 	FaultLLM     FaultPoint = "llm"
 	FaultNotion  FaultPoint = "notion"
@@ -63,14 +69,17 @@ const (
 	FaultFrame   FaultPoint = "frame"
 )
 
+// Faults lets tests and chaos runs inject failures at defined FaultPoints.
 type Faults interface {
 	// Check returns *RateLimitedError for llm/notion/youtube, ErrInjectedFrameFailure for frame.
 	Check(ctx context.Context, p FaultPoint) error
 	FrameDelay(ctx context.Context) time.Duration
 }
 
+// ErrInjectedFrameFailure is returned by Faults.Check at FaultFrame to simulate a failed frame capture.
 var ErrInjectedFrameFailure = errors.New("injected frame failure")
 
+// Rate-limit bucket names passed to Limiter.Acquire.
 const (
 	BucketLLMRequests         = "llm:requests"
 	BucketLLMTokens           = "llm:tokens"

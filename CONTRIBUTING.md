@@ -39,6 +39,7 @@ cd ai-note
 git switch build/v1
 go test ./...                        # unit tests
 go test -tags=integration ./...      # integration tests (Docker must be running)
+./scripts/lint.sh                    # golangci-lint exactly as CI runs it (via Docker)
 cp .env.example .env                 # then fill in values; never commit .env
 docker compose -f deploy/docker-compose.yml --env-file .env up -d --build
 curl localhost:8080/healthz

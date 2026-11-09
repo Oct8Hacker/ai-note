@@ -139,6 +139,7 @@ func mustJSON(v any) []byte {
 // RetryKind selects which retry counter a ScheduleRetry call consumes.
 type RetryKind string
 
+// Retry kinds: failure counts stage errors, rate_limit counts provider throttling, defer counts deliberate postponements.
 const (
 	RetryFailure   RetryKind = "failure"
 	RetryRateLimit RetryKind = "rate_limit"

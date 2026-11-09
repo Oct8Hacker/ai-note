@@ -21,7 +21,7 @@ func main() {
 		slog.Error("worker config", "error", err)
 		os.Exit(1)
 	}
-	log := logging.New(cfg.Common.LogLevel, "worker")
+	log := logging.New(cfg.LogLevel, "worker")
 	host, _ := os.Hostname()
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)

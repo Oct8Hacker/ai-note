@@ -26,6 +26,7 @@ type MemStore struct {
 
 var _ pipeline.CheckpointStore = (*MemStore)(nil)
 
+// NewMemStore returns an empty MemStore.
 func NewMemStore() *MemStore {
 	return &MemStore{
 		artifacts: map[string][]byte{},
@@ -46,6 +47,7 @@ func (m *MemStore) job(id uuid.UUID) *pipeline.Job {
 	return j
 }
 
+// SaveArtifact stores a JSON copy of v under (jobID, kind).
 func (m *MemStore) SaveArtifact(_ context.Context, jobID uuid.UUID, kind string, v any) error {
 	b, err := json.Marshal(v)
 	if err != nil {
@@ -57,6 +59,7 @@ func (m *MemStore) SaveArtifact(_ context.Context, jobID uuid.UUID, kind string,
 	return nil
 }
 
+// LoadArtifact decodes the stored artifact into v and reports whether one existed.
 func (m *MemStore) LoadArtifact(_ context.Context, jobID uuid.UUID, kind string, v any) (bool, error) {
 	m.mu.Lock()
 	b, ok := m.artifacts[akey(jobID, kind)]
@@ -87,6 +90,7 @@ func copyFrame(f pipeline.Frame) pipeline.Frame {
 	return out
 }
 
+// UpsertFrame inserts or replaces the frame keyed by (JobID, Idx).
 func (m *MemStore) UpsertFrame(_ context.Context, f pipeline.Frame) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -97,6 +101,7 @@ func (m *MemStore) UpsertFrame(_ context.Context, f pipeline.Frame) error {
 	return nil
 }
 
+// ListFrames returns copies of the job's frames ordered by index.
 func (m *MemStore) ListFrames(_ context.Context, jobID uuid.UUID) ([]pipeline.Frame, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -108,6 +113,7 @@ func (m *MemStore) ListFrames(_ context.Context, jobID uuid.UUID) ([]pipeline.Fr
 	return out, nil
 }
 
+// SetVideoMeta records the video title and duration on the job.
 func (m *MemStore) SetVideoMeta(_ context.Context, jobID uuid.UUID, title string, durationSec int) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -116,6 +122,7 @@ func (m *MemStore) SetVideoMeta(_ context.Context, jobID uuid.UUID, title string
 	return nil
 }
 
+// SetNotionParent records the resolved Notion parent, its kind and title property.
 func (m *MemStore) SetNotionParent(_ context.Context, jobID uuid.UUID, resolved, kind, titleProp string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -124,6 +131,7 @@ func (m *MemStore) SetNotionParent(_ context.Context, jobID uuid.UUID, resolved,
 	return nil
 }
 
+// MarkNotionCreateStarted stamps the time Notion page creation began.
 func (m *MemStore) MarkNotionCreateStarted(_ context.Context, jobID uuid.UUID) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -135,6 +143,7 @@ func (m *MemStore) MarkNotionCreateStarted(_ context.Context, jobID uuid.UUID) e
 	return nil
 }
 
+// SetNotionPage records the created Notion page ID and URL.
 func (m *MemStore) SetNotionPage(_ context.Context, jobID uuid.UUID, pageID, url string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

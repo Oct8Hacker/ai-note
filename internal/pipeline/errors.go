@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// RateLimitedError: Provider is "llm" | "notion" | "youtube".
+// RateLimitedError reports provider throttling; Provider is "llm" | "notion" | "youtube".
 type RateLimitedError struct {
 	Provider   string
 	RetryAfter time.Duration
@@ -15,6 +15,7 @@ func (e *RateLimitedError) Error() string {
 	return "rate limited by " + e.Provider + " (retry after " + e.RetryAfter.String() + ")"
 }
 
+// RetryableError marks a failure worth retrying; Code is the machine code and Err the cause.
 type RetryableError struct {
 	Code string
 	Err  error
@@ -29,6 +30,7 @@ func (e *RetryableError) Error() string {
 
 func (e *RetryableError) Unwrap() error { return e.Err }
 
+// FatalError marks a failure that must not be retried; Msg optionally elaborates on Code.
 type FatalError struct{ Code, Msg string }
 
 func (e *FatalError) Error() string {
@@ -38,8 +40,10 @@ func (e *FatalError) Error() string {
 	return e.Code
 }
 
+// ErrorClass is the retry classification of an error, as returned by Classify.
 type ErrorClass int
 
+// Error classes: retryable errors are retried, rate-limited ones are deferred, fatal ones fail the job.
 const (
 	ClassRetryable ErrorClass = iota
 	ClassRateLimited
