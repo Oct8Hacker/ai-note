@@ -2,7 +2,7 @@
 
 One file per task, extracted from the [implementation plan](../superpowers/plans/2026-11-09-video-notes-agent.md). Requirement IDs (FR-…, IR-…) refer to [docs/SRS.md](../SRS.md).
 
-Status is updated as each task passes review. **Owner:** A = Platform & Reliability (**Aryan**), B = Pipeline & Client (teammate), A+B = both.
+Every open task is a GitHub issue (A6–A12 = #1–#7, B1–B16 = #8–#23, Z1–Z4 = #24–#27) — see [CONTRIBUTING.md](../../CONTRIBUTING.md). Status is updated as each task passes review. **Owner:** A = Platform & Reliability (**Aryan**), B = Pipeline & Client (teammate), A+B = both.
 
 | Task | Title | Owner | Target | Status |
 |---|---|---|---|---|
