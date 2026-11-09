@@ -14,8 +14,8 @@ Every open task is a GitHub issue (A6–A12 = #1–#7, B1–B16 = #8–#23, Z1�
 | [A4](A4.md) | State machine, stage commits, retries, checkpoint store | A | 10 Nov | ✅ done |
 | [A5](A5.md) | Gateway job API | A | 11 Nov | ✅ done |
 | [A6](A6.md) | RabbitMQ topology, policy, publisher, consumer | A | 12 Nov | ✅ done |
-| [A7](A7.md) | Outbox relay | A | 12 Nov | 🔨 in progress |
-| [A8](A8.md) | Worker liveness and leases | A | 12 Nov | ⏳ pending |
+| [A7](A7.md) | Outbox relay | A | 12 Nov | ✅ done |
+| [A8](A8.md) | Worker liveness and leases | A | 12 Nov | 🔨 in progress |
 | [A9](A9.md) | Worker runtime | A | 12–13 Nov | ⏳ pending |
 | [A10](A10.md) | DLQ watcher and admin endpoints | A | 13 Nov | ⏳ pending |
 | [A11](A11.md) | Redis rate limiter | A | 14 Nov | ⏳ pending |
