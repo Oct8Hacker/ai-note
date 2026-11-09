@@ -4,11 +4,16 @@ package queue
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/url"
 	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -68,7 +73,7 @@ func testLog() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, ni
 
 func newConn(t *testing.T) *Conn {
 	t.Helper()
-	c, err := Dial(context.Background(), amqpURL, 10*time.Second, testLog())
+	c, err := Dial(context.Background(), amqpURL, 10*time.Second, testLog(), nil)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -298,5 +303,163 @@ func TestUnackedRedeliveredOnConnClose(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("second consumer got nothing")
+	}
+}
+
+// killAllConnections force-closes every broker connection via the management API.
+func killAllConnections(t *testing.T) {
+	t.Helper()
+	do := func(method, path string) *http.Response {
+		req, err := http.NewRequest(method, mgmtURL+path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.SetBasicAuth("guest", "guest")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp
+	}
+	resp := do(http.MethodGet, "/api/connections")
+	defer func() { _ = resp.Body.Close() }()
+	var conns []struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&conns); err != nil {
+		t.Fatal(err)
+	}
+	if len(conns) == 0 {
+		t.Fatal("no connections to kill")
+	}
+	for _, c := range conns {
+		r := do(http.MethodDelete, "/api/connections/"+url.PathEscape(c.Name))
+		_ = r.Body.Close()
+	}
+}
+
+func TestReconnectAfterForcedClose(t *testing.T) {
+	var hooks atomic.Int32
+	c, err := Dial(context.Background(), amqpURL, 10*time.Second, testLog(), func(ch *amqp.Channel) error {
+		hooks.Add(1)
+		return Declare(ch, testTop)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = c.Close() })
+	purge(t, c)
+	p := NewPublisher(c, testTop)
+	ctx := context.Background()
+	if err := p.PublishWork(ctx, newMsg()); err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for the management API to list our connection, then kill it.
+	time.Sleep(6 * time.Second) // stats are emitted every 5s
+	killAllConnections(t)
+
+	var m Message
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		m = newMsg()
+		if err = p.PublishWork(ctx, m); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("publish never recovered: %v", err)
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	if hooks.Load() < 2 {
+		t.Fatalf("onConnect ran %d times, want >= 2", hooks.Load())
+	}
+
+	cctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	got := make(chan uuid.UUID, 4)
+	go func() {
+		_ = Consume(cctx, c, QueueWork, 1, func(_ context.Context, d Delivery) {
+			got <- d.Msg.JobID
+			_ = d.Ack()
+		})
+	}()
+	select {
+	case <-got:
+	case <-time.After(10 * time.Second):
+		t.Fatal("consumer did not receive after reconnect")
+	}
+}
+
+func TestShutdownWaitsForInflightHandlers(t *testing.T) {
+	c, p := setup(t)
+	ctx := context.Background()
+	for range 2 {
+		if err := p.PublishWork(ctx, newMsg()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	started := make(chan struct{}, 2)
+	var ackErrs []error
+	var mu sync.Mutex
+	done := make(chan error, 1)
+	go func() {
+		done <- Consume(cctx, c, QueueWork, 2, func(_ context.Context, d Delivery) {
+			started <- struct{}{}
+			time.Sleep(1500 * time.Millisecond)
+			err := d.Ack()
+			mu.Lock()
+			ackErrs = append(ackErrs, err)
+			mu.Unlock()
+		})
+	}()
+	for range 2 {
+		select {
+		case <-started:
+		case <-time.After(5 * time.Second):
+			t.Fatal("handlers did not start")
+		}
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(ackErrs) != 2 || ackErrs[0] != nil || ackErrs[1] != nil {
+		t.Fatalf("acks: %v", ackErrs)
+	}
+	if _, ok := getOne(t, c, QueueWork, time.Second); ok {
+		t.Fatal("message redelivered after successful ack")
+	}
+}
+
+func TestUnroutablePublishFails(t *testing.T) {
+	c, _ := setup(t)
+	p := NewPublisher(c, Topology{RetryDelays: []time.Duration{42 * time.Second}})
+	err := p.PublishRetry(context.Background(), newMsg(), time.Second)
+	if !errors.Is(err, ErrUnroutable) {
+		t.Fatalf("err = %v, want ErrUnroutable", err)
+	}
+	// the publisher stays usable
+	if err := p.PublishWork(context.Background(), newMsg()); err != nil {
+		t.Fatalf("publish after unroutable: %v", err)
+	}
+}
+
+func TestChangeDeferDelayRedeclare(t *testing.T) {
+	c := newConn(t)
+	declare(t, c, Topology{RetryDelays: testTop.RetryDelays, DeferDelay: time.Second})
+	top3 := Topology{RetryDelays: testTop.RetryDelays, DeferDelay: 3 * time.Second}
+	declare(t, c, top3)
+	purge(t, c)
+	p := NewPublisher(c, Topology{RetryDelays: testTop.RetryDelays, DeferDelay: time.Second})
+	if err := p.PublishDefer(context.Background(), newMsg()); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := getOne(t, c, QueueWork, 5*time.Second); !ok {
+		t.Fatal("deferred message lost")
 	}
 }

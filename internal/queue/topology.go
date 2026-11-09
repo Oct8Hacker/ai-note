@@ -86,7 +86,12 @@ func Declare(ch *amqp.Channel, t Topology) error {
 			return err
 		}
 	}
-	return declareQueue(ch, QueueDefer, delayArgs(t.DeferDelay))
+	// No x-message-ttl: DeferDelay is applied per message (PublishDefer), so
+	// changing it never conflicts with an existing queue (FR-MQ-0).
+	return declareQueue(ch, QueueDefer, amqp.Table{
+		"x-dead-letter-exchange":    ExchangeJobs,
+		"x-dead-letter-routing-key": RoutingWork,
+	})
 }
 
 func delayArgs(d time.Duration) amqp.Table {

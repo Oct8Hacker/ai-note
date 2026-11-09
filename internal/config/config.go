@@ -182,6 +182,9 @@ func (c Common) validate() error {
 		if d <= 0 {
 			return errors.New("RETRY_DELAYS entries must be positive")
 		}
+		if d%time.Second != 0 {
+			return fmt.Errorf("RETRY_DELAYS entry %v must be a whole number of seconds (>= 1s)", d)
+		}
 	}
 	if err := positiveDur("AMQP_HEARTBEAT", c.AMQPHeartbeat); err != nil {
 		return err

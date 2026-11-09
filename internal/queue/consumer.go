@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -45,10 +46,8 @@ func Consume(ctx context.Context, c *Conn, queue string, prefetch int, handle fu
 	if prefetch < 1 {
 		prefetch = 1
 	}
-	var wg sync.WaitGroup
-	defer wg.Wait()
 	for {
-		err := consumeOnce(ctx, c, queue, prefetch, handle, &wg)
+		err := consumeOnce(ctx, c, queue, prefetch, handle)
 		if ctx.Err() != nil || errors.Is(err, ErrConnClosed) {
 			return nil
 		}
@@ -62,18 +61,24 @@ func Consume(ctx context.Context, c *Conn, queue string, prefetch int, handle fu
 }
 
 // consumeOnce runs one subscription until its delivery channel closes or ctx
-// is done.
-func consumeOnce(ctx context.Context, c *Conn, queue string, prefetch int, handle func(context.Context, Delivery), wg *sync.WaitGroup) error {
+// is done. It always lets this subscription's in-flight handlers finish
+// (so their acks still land) before closing the channel.
+func consumeOnce(ctx context.Context, c *Conn, queue string, prefetch int, handle func(context.Context, Delivery)) error {
 	ch, err := c.Channel(ctx)
 	if err != nil {
 		return err
 	}
-	// Closing the channel requeues anything still unacked.
-	defer func() { _ = ch.Close() }()
+	var wg sync.WaitGroup
+	tag := "ainote-" + uuid.NewString()
+	defer func() {
+		_ = ch.Cancel(tag, false) // stop new deliveries; error means channel already dead
+		wg.Wait()                 // let in-flight handlers ack
+		_ = ch.Close()            // requeues anything still unacked
+	}()
 	if err := ch.Qos(prefetch, 0, false); err != nil {
 		return fmt.Errorf("qos: %w", err)
 	}
-	deliveries, err := ch.ConsumeWithContext(ctx, queue, "", false, false, false, false, nil)
+	deliveries, err := ch.Consume(queue, tag, false, false, false, false, nil)
 	if err != nil {
 		return fmt.Errorf("consume %s: %w", queue, err)
 	}
@@ -101,6 +106,7 @@ func consumeOnce(ctx context.Context, c *Conn, queue string, prefetch int, handl
 			select {
 			case sem <- struct{}{}:
 			case <-ctx.Done():
+				_ = raw.Nack(false, true)
 				return nil
 			}
 			wg.Add(1)

@@ -161,7 +161,11 @@ func probeRabbit(url string, heartbeat time.Duration) error {
 // delivery-limit policy, retrying the management API for up to ~20 s while it
 // starts.
 func setupBroker(ctx context.Context, cfg config.Gateway, log *slog.Logger) (*queue.Conn, error) {
-	conn, err := queue.Dial(ctx, cfg.AMQPURL, cfg.AMQPHeartbeat, log)
+	top := queue.Topology{RetryDelays: cfg.RetryDelays, DeferDelay: cfg.DeferDelay}
+	// The hook declares topology on the first connection and on every reconnect.
+	conn, err := queue.Dial(ctx, cfg.AMQPURL, cfg.AMQPHeartbeat, log, func(ch *amqp.Channel) error {
+		return queue.Declare(ch, top)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("rabbitmq: %w", err)
 	}
@@ -171,18 +175,6 @@ func setupBroker(ctx context.Context, cfg config.Gateway, log *slog.Logger) (*qu
 		}
 		return nil, err
 	}
-	ch, err := conn.Channel(ctx)
-	if err != nil {
-		return fail(fmt.Errorf("rabbitmq channel: %w", err))
-	}
-	derr := queue.Declare(ch, queue.Topology{RetryDelays: cfg.RetryDelays, DeferDelay: cfg.DeferDelay})
-	if cerr := ch.Close(); cerr != nil {
-		log.Warn("amqp channel close", "err", cerr)
-	}
-	if derr != nil {
-		return fail(derr)
-	}
-
 	const attempts = 10
 	for i := 1; ; i++ {
 		err = queue.ApplyDeliveryLimitPolicy(ctx, cfg.RabbitMgmtURL, cfg.RabbitUser, cfg.RabbitPass, cfg.DeliveryLimit)

@@ -89,6 +89,16 @@ func TestBadRetryDelays(t *testing.T) {
 	assert.Contains(t, err.Error(), "RETRY_DELAYS")
 }
 
+func TestFractionalRetryDelaysRejected(t *testing.T) {
+	workerEnv(t)
+	for _, v := range []string{"10s,500ms", "1500ms", "10s,1.5s"} {
+		t.Setenv("RETRY_DELAYS", v)
+		_, err := LoadWorker()
+		require.Error(t, err, v)
+		assert.Contains(t, err.Error(), "RETRY_DELAYS")
+	}
+}
+
 func TestParseDurations(t *testing.T) {
 	d, err := ParseDurations(" 1s, 2m ")
 	require.NoError(t, err)
