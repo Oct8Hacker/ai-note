@@ -46,10 +46,20 @@ For extension tasks: `npm --prefix extension test` and `npm --prefix extension r
 - **Secrets:** API keys and Notion tokens live only in the local `.env` (git-ignored). Never commit, log, print or paste them.
 - **go.mod stays at `go 1.23`.** If `go get` bumps it, pin an older version of that dependency.
 
+## Working in parallel (two people, two AIs)
+
+Aryan (Claude Code) and Om (Codex) work at the same time on different tracks. To avoid conflicts:
+
+- **Rebase often:** `git pull --rebase origin build/v1` before starting a task and again before opening its PR. Keep PRs small and merge them quickly.
+- **`go.mod` / `go.sum`:** after rebasing, run `go mod tidy` and commit. Resolve any `go.sum` conflict by re-running `go mod tidy` — never hand-edit it.
+- **Do not edit the status column in `docs/tasks/README.md`.** Task status is tracked by the GitHub issues (a merged PR with `Closes #N` closes the issue) and the milestone.
+- **Shared wiring files** (`cmd/gateway/main.go`, `cmd/worker/main.go`, `internal/api/server.go`, `internal/config/`): only touch them when your task says so. B10 starts after A10/A11 are merged; B11 after A9/A11. In `internal/config/` only ADD fields — never rename or change existing ones.
+- **`internal/pipeline/` is frozen** (see Hard rules).
+
 ## Git
 
 - Branch per task from `build/v1`: `task/<id>` (e.g. `task/b1`).
 - Conventional commits: `feat(transcript): …`, `fix(…)`, `test(…)`, `docs(…)`.
 - Keep an AI attribution trailer on AI-written commits (e.g. `Co-Authored-By: Codex <noreply@openai.com>`).
-- Open a PR into `build/v1` with `Closes #<issue>`; the other person reviews before merge. Mark the task ✅ in `docs/tasks/README.md` in the same PR.
+- Open a PR into `build/v1` with `Closes #<issue>`; CI must be green; the other person reviews before merge.
 - Never force-push, never push to `main`.

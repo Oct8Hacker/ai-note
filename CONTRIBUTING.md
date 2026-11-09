@@ -64,7 +64,9 @@ We use AI to write code (Aryan: Claude Code, Om: Codex), but **we learn before w
 4. Implement until they pass. `go vet ./...` and `go test ./...` must be clean.
 5. Commit with a conventional message: `feat(transcript): …`, `fix(api): …`, `test(…)`, `docs(…)`.
 6. Open a PR **into `build/v1`** with `Closes #<issue>` in the description. The other person reviews before merge.
-7. Mark the task ✅ in `docs/tasks/README.md` in the same PR.
+7. Don't edit the status column in `docs/tasks/README.md` — the merged PR closes the issue, and the issue/milestone is the status.
+
+**Working in parallel:** rebase on `build/v1` before starting and before opening a PR (`git pull --rebase origin build/v1`), then `go mod tidy`; fix `go.sum` conflicts by re-running `go mod tidy`. Shared wiring files (`cmd/*/main.go`, `internal/api/server.go`, `internal/config/`) only when your task says so — see `AGENTS.md`.
 
 Rules of thumb:
 - Stay inside your task's files. If you need to change a shared contract or the other track's code, say so in the PR.
