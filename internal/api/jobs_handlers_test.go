@@ -299,3 +299,30 @@ func TestUnknownRouteAndMethod(t *testing.T) {
 	requireErr(t, do(s.Handler(), "GET", "/nope", "", nil), 404, "NOT_FOUND")
 	requireErr(t, do(s.Handler(), "DELETE", "/jobs", "", nil), 405, "METHOD_NOT_ALLOWED")
 }
+
+func TestCORSVary(t *testing.T) {
+	s, _, _ := newTestServer(t, &fakeStore{created: true})
+	h := s.Handler()
+
+	rec := do(h, "GET", "/jobs/"+uuid.NewString(), "", map[string]string{"Origin": ext})
+	require.Equal(t, ext, rec.Header().Get("Access-Control-Allow-Origin"))
+	require.Contains(t, rec.Header().Values("Vary"), "Origin")
+
+	rec = do(h, "GET", "/jobs/"+uuid.NewString(), "", map[string]string{"Origin": "https://evil.com"})
+	require.Empty(t, rec.Header().Get("Access-Control-Allow-Origin"))
+	require.Contains(t, rec.Header().Values("Vary"), "Origin")
+
+	rec = do(h, "OPTIONS", "/jobs", "", map[string]string{"Origin": ext})
+	vary := strings.Join(rec.Header().Values("Vary"), ",")
+	require.Contains(t, vary, "Origin")
+	require.Contains(t, vary, "Access-Control-Request-Method")
+	require.Contains(t, vary, "Access-Control-Request-Headers")
+}
+
+func TestPostJobStoresCanonicalURL(t *testing.T) {
+	st := &fakeStore{created: true}
+	s, _, _ := newTestServer(t, st)
+	body := `{"youtube_url":"  https://youtu.be/dQw4w9WgXcQ?si=abc ","notion_token":"t"}`
+	require.Equal(t, 202, do(s.Handler(), "POST", "/jobs", body, jsonCT).Code)
+	require.Equal(t, "https://www.youtube.com/watch?v=dQw4w9WgXcQ", st.gotNew.YouTubeURL)
+}

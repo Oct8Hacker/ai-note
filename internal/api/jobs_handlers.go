@@ -78,7 +78,7 @@ func (s *Server) postJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	job, created, err := s.deps.Jobs.CreateJob(r.Context(), jobs.NewJob{
-		ID: id, VideoID: videoID, YouTubeURL: req.YouTubeURL, NotionParentID: parent, IdempotencyKey: idem,
+		ID: id, VideoID: videoID, YouTubeURL: "https://www.youtube.com/watch?v=" + videoID, NotionParentID: parent, IdempotencyKey: idem,
 	}, payload)
 	if err != nil {
 		internalError(w, r, fmt.Errorf("create job: %w", err))
