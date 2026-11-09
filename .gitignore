@@ -1,0 +1,5 @@
+.superpowers/
+.env
+extension/node_modules/
+extension/dist/
+tmp/
