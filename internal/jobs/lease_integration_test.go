@@ -122,3 +122,18 @@ func TestRenewAndReleaseLease(t *testing.T) {
 	require.Nil(t, leaseOf(t, r, id))
 	require.ErrorIs(t, r.RenewLease(ctx, id, "w1", time.Minute), ErrLeaseLost)
 }
+
+func TestClaimRenewBetweenReadAndWrite(t *testing.T) {
+	r, id := newJobIn(t, pipeline.StatusQueued)
+	ctx := context.Background()
+	_, _, err := r.Claim(ctx, id, "w1", time.Minute, alive(true))
+	require.NoError(t, err)
+	_, err = r.pool.Exec(ctx, `UPDATE jobs SET lease_until = now() - interval '1 second' WHERE id=$1`, id)
+	require.NoError(t, err)
+	claimAfterRead = func() { require.NoError(t, r.RenewLease(ctx, id, "w1", time.Minute)) }
+	t.Cleanup(func() { claimAfterRead = nil })
+	_, out, err := r.Claim(ctx, id, "w2", time.Minute, alive(true))
+	require.NoError(t, err)
+	require.Equal(t, Busy, out)
+	require.Equal(t, "w1", *leaseOf(t, r, id))
+}

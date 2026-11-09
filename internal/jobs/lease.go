@@ -29,6 +29,10 @@ const (
 // ErrLeaseLost is returned by RenewLease when the caller no longer owns the lease.
 var ErrLeaseLost = errors.New("lease lost")
 
+// claimAfterRead is a test hook run between Claim's read and its UPDATE.
+// Always nil in production.
+var claimAfterRead func()
+
 // Claim takes the job's lease for workerID. The lease is taken unless another
 // owner holds an unexpired lease AND ownerAlive(owner) is true. All time
 // comparisons use the database clock. The conditional UPDATE on the observed
@@ -52,6 +56,9 @@ func (r *Repo) Claim(ctx context.Context, id uuid.UUID, workerID string, ttl tim
 	if pipeline.Status(status).IsTerminal() {
 		return pipeline.Job{}, Terminal, nil
 	}
+	// aliveAtWrite is true when liveness was not consulted (lease expired at
+	// read time); the write-time lease_until check then decides.
+	aliveAtWrite := true
 	if owner != nil && *owner != workerID && valid {
 		ok, err := ownerAlive(*owner)
 		if err != nil {
@@ -60,11 +67,16 @@ func (r *Repo) Claim(ctx context.Context, id uuid.UUID, workerID string, ttl tim
 		if ok {
 			return pipeline.Job{}, Busy, nil
 		}
+		aliveAtWrite = false
+	}
+	if claimAfterRead != nil {
+		claimAfterRead()
 	}
 	tag, err := r.pool.Exec(ctx,
 		`UPDATE jobs SET lease_owner=$2, lease_until=now() + $3::interval
-		 WHERE id=$1 AND status = ANY($4) AND lease_owner IS NOT DISTINCT FROM $5`,
-		id, workerID, fmt.Sprintf("%d microseconds", ttl.Microseconds()), statusStrings(nonTerminal), owner)
+		 WHERE id=$1 AND status = ANY($4) AND lease_owner IS NOT DISTINCT FROM $5
+		 AND (lease_owner IS NULL OR lease_owner=$2 OR lease_until <= now() OR NOT $6::bool)`,
+		id, workerID, fmt.Sprintf("%d microseconds", ttl.Microseconds()), statusStrings(nonTerminal), owner, aliveAtWrite)
 	if err != nil {
 		return pipeline.Job{}, Busy, fmt.Errorf("claim update: %w", err)
 	}
