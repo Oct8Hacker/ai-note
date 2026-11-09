@@ -5,7 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
+	"time"
 
 	"ainote/migrations"
 
@@ -17,6 +19,9 @@ import (
 // Migrate applies all pending migrations. The pgx5 driver holds a Postgres
 // advisory lock while migrating, so concurrent callers are serialised.
 func Migrate(ctx context.Context, databaseURL string) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("migrate: %w", err)
+	}
 	src, err := iofs.New(migrations.FS, ".")
 	if err != nil {
 		return fmt.Errorf("migrations source: %w", err)
@@ -32,7 +37,11 @@ func Migrate(ctx context.Context, databaseURL string) error {
 	if err != nil {
 		return fmt.Errorf("migrate init: %w", err)
 	}
-	defer m.Close()
+	defer func() {
+		if srcErr, dbErr := m.Close(); srcErr != nil || dbErr != nil {
+			slog.Warn("migrate close", "source_error", srcErr, "database_error", dbErr)
+		}
+	}()
 
 	done := make(chan error, 1)
 	go func() { done <- m.Up() }()
@@ -44,6 +53,15 @@ func Migrate(ctx context.Context, databaseURL string) error {
 		return nil
 	case <-ctx.Done():
 		m.GracefulStop <- true
-		return ctx.Err()
+		// Wait for Up to stop before Close tears down source/db under it.
+		select {
+		case err := <-done:
+			if err != nil && !errors.Is(err, migrate.ErrNoChange) {
+				slog.Warn("migrate stopped by cancellation", "error", err)
+			}
+		case <-time.After(30 * time.Second):
+			slog.Error("migrate did not stop within 30s of cancellation")
+		}
+		return fmt.Errorf("migrate: %w", ctx.Err())
 	}
 }

@@ -121,3 +121,23 @@ func TestWarningsNeverNull(t *testing.T) {
 	require.Nil(t, m["result"])
 	require.Nil(t, m["waiting"])
 }
+
+func TestMigrateCancelled(t *testing.T) {
+	url := newTestDB(t)
+
+	// Already-cancelled context: must fail with context.Canceled.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	require.ErrorIs(t, Migrate(ctx, url), context.Canceled)
+
+	// Cancel shortly after starting: either it finished first (nil) or it
+	// reports cancellation; never anything else.
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	time.AfterFunc(time.Millisecond, cancel2)
+	if err := Migrate(ctx2, url); err != nil {
+		require.ErrorIs(t, err, context.Canceled)
+	}
+
+	// No dirty state or held lock left behind.
+	require.NoError(t, Migrate(context.Background(), url))
+}
