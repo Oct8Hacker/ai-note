@@ -12,7 +12,7 @@ Status is updated as each task passes review. **Owner:** A = Platform & Reliabil
 | [A2](A2.md) | Compose stack, Dockerfiles, `/healthz` | A | 9 Nov | ✅ done |
 | [A3](A3.md) | Schema, migrations, job repository core | A | 10 Nov | ✅ done |
 | [A4](A4.md) | State machine, stage commits, retries, checkpoint store | A | 10 Nov | ✅ done |
-| [A5](A5.md) | Gateway job API | A | 11 Nov | 🔨 in progress |
+| [A5](A5.md) | Gateway job API | A | 11 Nov | ✅ done |
 | [A6](A6.md) | RabbitMQ topology, policy, publisher, consumer | A | 12 Nov | ⏳ pending |
 | [A7](A7.md) | Outbox relay | A | 12 Nov | ⏳ pending |
 | [A8](A8.md) | Worker liveness and leases | A | 12 Nov | ⏳ pending |
