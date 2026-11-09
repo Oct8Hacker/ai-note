@@ -47,6 +47,15 @@ curl localhost:8080/healthz
 
 API keys (Gemini, Notion) go **only** in your local `.env`. Never commit them or paste them in issues, PRs or chats.
 
+## Learning first, then code (both of us)
+
+We use AI to write code (Aryan: Claude Code, Om: Codex), but **we learn before we build**. For every task:
+
+1. **Learn the prerequisites** — ask your AI to teach every concept/tool the task needs (it will do this automatically: see [`AGENTS.md`](AGENTS.md)). No code until you understand it.
+2. **Say go** — the AI then implements the task **one step at a time** (tests first, then code), explaining each step.
+3. **Walkthrough** — the AI walks you through the finished code so you can explain it in the viva.
+4. Only then move to the next task.
+
 ## Workflow for every task
 
 1. Assign yourself the issue.
