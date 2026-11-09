@@ -82,11 +82,14 @@ func (p *Publisher) publish(ctx context.Context, exchange, key string, m Message
 		p.ch = ch
 		p.returns = ch.NotifyReturn(make(chan amqp.Return, 16))
 	}
-	for drained := false; !drained; { // discard stale returns
-		select {
-		case <-p.returns:
-		default:
-			drained = true
+	for { // discard stale returns
+		_, got, open := pollReturn(p.returns)
+		if !open {
+			p.dropChannel()
+			return errors.New("publisher channel closed")
+		}
+		if !got {
+			break
 		}
 	}
 
@@ -114,12 +117,29 @@ func (p *Publisher) publish(ctx context.Context, exchange, key string, m Message
 		return errors.New("publish nacked by broker")
 	}
 	// A Return is dispatched before the confirm for the same publish.
-	select {
-	case r := <-p.returns:
+	r, got, open := pollReturn(p.returns)
+	if !open {
+		p.dropChannel() // confirmed, but the channel is gone: next publish starts fresh
+	}
+	if got {
 		return fmt.Errorf("%w: exchange=%q key=%q reply=%d %s", ErrUnroutable, exchange, key, r.ReplyCode, r.ReplyText)
-	default:
 	}
 	return nil
+}
+
+// pollReturn does a non-blocking read of a NotifyReturn channel. got reports
+// that a Return was read; open is false when the channel has been closed
+// (the amqp channel shut down), in which case no Return is reported.
+func pollReturn(ch <-chan amqp.Return) (r amqp.Return, got, open bool) {
+	select {
+	case r, ok := <-ch:
+		if !ok {
+			return amqp.Return{}, false, false
+		}
+		return r, true, true
+	default:
+		return amqp.Return{}, false, true
+	}
 }
 
 // dropChannel discards the shared channel; p.mu must be held.
