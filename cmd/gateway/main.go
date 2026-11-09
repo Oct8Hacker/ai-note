@@ -21,6 +21,7 @@ import (
 	"ainote/internal/logging"
 	"ainote/internal/outbox"
 	"ainote/internal/queue"
+	"ainote/internal/worker"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -81,7 +82,8 @@ func run() error {
 	}()
 
 	checker := &health.Checker{
-		Version: version,
+		Version:      version,
+		WorkersAlive: func(ctx context.Context) (int, error) { return worker.CountAlive(ctx, rdb) },
 		Probes: map[string]health.Probe{
 			"postgres": func(ctx context.Context) error {
 				var one int
