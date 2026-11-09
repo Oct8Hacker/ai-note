@@ -9,8 +9,8 @@ Status is updated as each task passes review. **Owner:** A = Platform & Reliabil
 | [0.1](0.1.md) | Repository bootstrap | A+B | 9 Nov | ✅ done |
 | [0.2](0.2.md) | Pipeline contracts and test helpers | A+B | 9 Nov | ✅ done |
 | [A1](A1.md) | Configuration | A | 9 Nov | ✅ done |
-| [A2](A2.md) | Compose stack, Dockerfiles, `/healthz` | A | 9 Nov | 🔍 in review |
-| [A3](A3.md) | Schema, migrations, job repository core | A | 10 Nov | ⏳ pending |
+| [A2](A2.md) | Compose stack, Dockerfiles, `/healthz` | A | 9 Nov | ✅ done |
+| [A3](A3.md) | Schema, migrations, job repository core | A | 10 Nov | 🔨 in progress |
 | [A4](A4.md) | State machine, stage commits, retries, checkpoint store | A | 10 Nov | ⏳ pending |
 | [A5](A5.md) | Gateway job API | A | 11 Nov | ⏳ pending |
 | [A6](A6.md) | RabbitMQ topology, policy, publisher, consumer | A | 12 Nov | ⏳ pending |
