@@ -15,6 +15,7 @@ import (
 
 	"ainote/internal/api"
 	"ainote/internal/config"
+	"ainote/internal/crypto"
 	"ainote/internal/health"
 	"ainote/internal/jobs"
 	"ainote/internal/logging"
@@ -25,6 +26,12 @@ import (
 )
 
 var version = "dev"
+
+// noopKicker stands in for the outbox relay (Task A7); jobs still land in the
+// outbox table.
+type noopKicker struct{}
+
+func (noopKicker) Kick() {}
 
 func main() {
 	if err := run(); err != nil {
@@ -75,11 +82,19 @@ func run() error {
 		},
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", api.HealthHandler(checker))
+	sealer, err := crypto.NewSealer(cfg.Common.TokenEncKey)
+	if err != nil {
+		return fmt.Errorf("token sealer: %w", err)
+	}
+	apiSrv := api.NewServer(cfg, api.ServerDeps{
+		Jobs:   jobs.NewRepo(pool),
+		Sealer: sealer,
+		Outbox: noopKicker{},
+		Health: checker,
+	})
 	srv := &http.Server{
 		Addr:              ":" + strconv.Itoa(cfg.Port),
-		Handler:           mux,
+		Handler:           apiSrv.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
