@@ -1,0 +1,17 @@
+{
+  "events": [
+    {},
+    {
+      "tStartMs": 0,
+      "dDurationMs": 2500,
+      "segs": [
+        {
+          "utf8": "hello"
+        },
+        {
+          "utf8": " and welcome"
+        }
+      ]
+    }
+  ]
+}
