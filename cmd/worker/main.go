@@ -23,6 +23,7 @@ import (
 	"ainote/internal/pipeline"
 	"ainote/internal/pipeline/pipelinetest"
 	"ainote/internal/queue"
+	"ainote/internal/ratelimit"
 	"ainote/internal/worker"
 )
 
@@ -73,6 +74,9 @@ func run() error {
 		return fmt.Errorf("token sealer: %w", err)
 	}
 
+	buckets, notionTmpl, daily := ratelimit.FromWorkerConfig(cfg)
+	limiter := ratelimit.New(rdb, buckets, notionTmpl, daily, cfg.LimiterMaxWait, time.Now)
+
 	top := queue.Topology{RetryDelays: cfg.RetryDelays, DeferDelay: cfg.DeferDelay}
 	mq, err := queue.Dial(ctx, cfg.AMQPURL, cfg.AMQPHeartbeat, log, func(ch *amqp.Channel) error {
 		return queue.Declare(ch, top)
@@ -115,9 +119,8 @@ func run() error {
 		RetryDelays:         cfg.RetryDelays,
 		DeferDelay:          cfg.DeferDelay,
 	}, repo, queue.NewPublisher(mq, top), rdb, sealer, fakeStages(),
-		// Placeholders until the real limiter (A11), fault injector (A12) and
-		// stages (Z1) replace them.
-		pipelinetest.NoopLimiter{}, pipelinetest.NoFaults{}, log)
+		// Placeholders until the fault injector (A12) and stages (Z1) replace them.
+		limiter, pipelinetest.NoFaults{}, log)
 
 	log.Info("worker started", "worker_id", workerID)
 	err = rt.Run(ctx, mq)

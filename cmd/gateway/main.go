@@ -23,6 +23,7 @@ import (
 	"ainote/internal/logging"
 	"ainote/internal/outbox"
 	"ainote/internal/queue"
+	"ainote/internal/ratelimit"
 	"ainote/internal/worker"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -86,6 +87,7 @@ func run() error {
 	checker := &health.Checker{
 		Version:      version,
 		WorkersAlive: func(ctx context.Context) (int, error) { return worker.CountAlive(ctx, rdb) },
+		Provider429:  func(ctx context.Context) (int64, error) { return ratelimit.Get429(ctx, rdb) },
 		Probes: map[string]health.Probe{
 			"postgres": func(ctx context.Context) error {
 				var one int
@@ -95,6 +97,12 @@ func run() error {
 			"redis":    func(ctx context.Context) error { return rdb.Ping(ctx).Err() },
 		},
 	}
+
+	// Notion-only limiter for the gateway-side Notion calls of Task B10; the
+	// other buckets are worker-only. Wait is bounded like the worker default.
+	notionLimiter := ratelimit.New(rdb, nil, ratelimit.BucketSpec{Capacity: 3, RefillPerSec: cfg.NotionRPS},
+		nil, 60*time.Second, time.Now)
+	_ = notionLimiter // consumed by Task B10
 
 	sealer, err := crypto.NewSealer(cfg.TokenEncKey)
 	if err != nil {
