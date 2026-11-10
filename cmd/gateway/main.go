@@ -10,12 +10,14 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 
 	"ainote/internal/api"
 	"ainote/internal/config"
 	"ainote/internal/crypto"
+	"ainote/internal/dlqwatch"
 	"ainote/internal/health"
 	"ainote/internal/jobs"
 	"ainote/internal/logging"
@@ -112,11 +114,31 @@ func run() error {
 		<-relayDone
 	}()
 
+	bgCtx, stopBg := context.WithCancel(ctx)
+	var bg sync.WaitGroup
+	defer func() {
+		stopBg()
+		bg.Wait()
+	}()
+	bg.Add(2)
+	go func() {
+		defer bg.Done()
+		if err := dlqwatch.Watch(bgCtx, mq, repo, log); err != nil {
+			log.Error("dlq watcher stopped", "err", err)
+		}
+	}()
+	go func() {
+		defer bg.Done()
+		purgeFrames(bgCtx, repo, log)
+	}()
+
 	apiSrv := api.NewServer(cfg, api.ServerDeps{
 		Jobs:   repo,
 		Sealer: sealer,
 		Outbox: relay,
 		Health: checker,
+		Admin:  repo,
+		// Faults stays nil until Task A12 provides the Redis-backed FaultAdmin.
 	})
 	srv := &http.Server{
 		Addr:              ":" + strconv.Itoa(cfg.Port),
@@ -142,6 +164,37 @@ func run() error {
 		return err
 	}
 	return nil
+}
+
+// frameRetention is how long frame JPEG bytes are kept after a job finishes (SRS §7.2).
+const frameRetention = 24 * time.Hour
+
+// purgeFrames clears expired frame images once at start and then hourly,
+// until ctx is done.
+func purgeFrames(ctx context.Context, repo *jobs.Repo, log *slog.Logger) {
+	sweep := func() {
+		n, err := repo.PurgeFrameImages(ctx, frameRetention)
+		if err != nil {
+			if ctx.Err() == nil {
+				log.Error("frame purge failed", "err", err)
+			}
+			return
+		}
+		if n > 0 {
+			log.Info("purged frame images", "frames", n)
+		}
+	}
+	sweep()
+	t := time.NewTicker(time.Hour)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			sweep()
+		}
+	}
 }
 
 // probeRabbit opens a connection and channel and passive-declares jobs.work.

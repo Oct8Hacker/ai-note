@@ -30,6 +30,10 @@ type ServerDeps struct {
 	Sealer *crypto.Sealer
 	Outbox OutboxKicker
 	Health *health.Checker
+	// Admin enables GET /admin/dlq and the replay route when non-nil.
+	Admin AdminStore
+	// Faults enables GET/PUT /admin/faults when non-nil (wired by Task A12).
+	Faults FaultAdmin
 }
 
 // Server is the gateway HTTP API.
@@ -49,6 +53,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /jobs", s.postJob)
 	mux.HandleFunc("GET /jobs/{job_id}", s.getJob)
 	mux.HandleFunc("GET /jobs/{job_id}/results", s.getResults)
+	s.registerAdmin(mux)
 	if s.deps.Health != nil {
 		mux.HandleFunc("GET /healthz", HealthHandler(s.deps.Health))
 	}
