@@ -4,40 +4,12 @@ package worker
 
 import (
 	"context"
-	"fmt"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
 )
-
-var redisAddr string
-
-func TestMain(m *testing.M) {
-	ctx := context.Background()
-	c, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: testcontainers.ContainerRequest{
-			Image:        "redis:7-alpine",
-			ExposedPorts: []string{"6379/tcp"},
-			WaitingFor:   wait.ForLog("Ready to accept connections").WithStartupTimeout(60 * time.Second),
-		},
-		Started: true,
-	})
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "start redis:", err)
-		os.Exit(1)
-	}
-	host, _ := c.Host(ctx)
-	port, _ := c.MappedPort(ctx, "6379/tcp")
-	redisAddr = fmt.Sprintf("%s:%s", host, port.Port())
-	code := m.Run()
-	_ = testcontainers.TerminateContainer(c)
-	os.Exit(code)
-}
 
 func newRedis(t *testing.T) *redis.Client {
 	t.Helper()
