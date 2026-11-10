@@ -2,7 +2,7 @@
 
 One file per task, extracted from the [implementation plan](../superpowers/plans/2026-11-09-video-notes-agent.md). Requirement IDs (FR-…, IR-…) refer to [docs/SRS.md](../SRS.md).
 
-Every open task is a GitHub issue (A6–A12 = #1–#7, B1–B16 = #8–#23, Z1–Z4 = #24–#27). Status is updated as each task passes review. **Owner:** A = Platform & Reliability (**Aryan**), B = Pipeline & Client (teammate), A+B = both.
+Every open task is a GitHub issue (A6–A12 = #1–#7, B1–B16 = #8–#23, Z1–Z4 = #24–#27). Status is updated when a task is merged. **Owner:** A = Platform & Reliability (**Aryan**, Claude Code), B = Pipeline & Client (**Om**, Codex), A+B = both. AI agents: read [`AGENTS.md`](../../AGENTS.md) first; tasks with a "Notes from Track A" section (B3, B6, B9, B10, B11) have extra context at the end.
 
 | Task | Title | Owner | Target | Status |
 |---|---|---|---|---|
