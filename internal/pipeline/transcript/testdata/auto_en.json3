@@ -1,0 +1,58 @@
+{
+  "events": [
+    {
+      "tStartMs": 0,
+      "dDurationMs": 1500,
+      "segs": [
+        {
+          "utf8": "[Music]"
+        }
+      ]
+    },
+    {
+      "tStartMs": 1500,
+      "dDurationMs": 1500,
+      "segs": [
+        {
+          "utf8": "so today"
+        }
+      ]
+    },
+    {
+      "tStartMs": 3000,
+      "dDurationMs": 1500,
+      "segs": [
+        {
+          "utf8": "so today"
+        }
+      ]
+    },
+    {
+      "tStartMs": 4500,
+      "dDurationMs": 1500,
+      "segs": [
+        {
+          "utf8": "we  will   learn"
+        }
+      ]
+    },
+    {
+      "tStartMs": 6000,
+      "dDurationMs": 500,
+      "segs": [
+        {
+          "utf8": "more"
+        }
+      ]
+    },
+    {
+      "tStartMs": 7500,
+      "dDurationMs": 500,
+      "segs": [
+        {
+          "utf8": "more"
+        }
+      ]
+    }
+  ]
+}
