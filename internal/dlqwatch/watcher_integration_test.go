@@ -198,6 +198,7 @@ func TestWatcherMarksDeliveryLimit(t *testing.T) {
 	var m queue.Message
 	require.NoError(t, json.Unmarshal(d.Body, &m))
 	require.Equal(t, id, m.JobID)
+	require.NotNil(t, d.Headers["x-death"], "broker must record x-death on delivery-limit dead-lettering")
 	require.Eventually(t, func() bool {
 		qi, err := ch.QueueDeclarePassive(queue.QueueDLQAudit, true, false, false, false, nil)
 		return err == nil && qi.Messages == 0

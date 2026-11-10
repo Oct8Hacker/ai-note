@@ -98,7 +98,8 @@ func (r *Repo) listEvents(ctx context.Context, id uuid.UUID) ([]Event, error) {
 
 // ResetForReplay re-opens a DEAD_LETTERED job in one transaction: the status
 // returns to the stage it was in when it was dead-lettered (QUEUED if that is
-// unknown), all retry counters and the error are cleared, and a new outbox row
+// unknown; EXTRACTING_FRAMES instead of PUBLISHING when purged frames must be
+// recaptured), all retry counters and the error are cleared, and a new outbox row
 // carrying outboxPayload is written. It returns ErrNotFound for an unknown job
 // and ErrNotDeadLettered for any other status.
 func (r *Repo) ResetForReplay(ctx context.Context, id uuid.UUID, outboxPayload []byte) (pipeline.Job, error) {
@@ -136,6 +137,22 @@ func (r *Repo) ResetForReplay(ctx context.Context, id uuid.UUID, outboxPayload [
 		}
 	}
 
+	// Frame bytes are purged 24 h after a terminal status (SRS 7.2), but their
+	// rows still read 'captured'. Reset those to 'pending' so the frame stage
+	// recaptures them from the video with ffmpeg (Constraint B); frames already
+	// uploaded to Notion no longer need their bytes and are left alone.
+	if stage == pipeline.StatusExtractingFrames || stage == pipeline.StatusPublishing {
+		tag, err := tx.Exec(ctx, `UPDATE job_frames SET status = 'pending', captured_sec = NULL,
+				verified = false, warning_code = NULL
+			WHERE job_id = $1 AND status = 'captured' AND image_jpeg IS NULL AND notion_file_upload_id IS NULL`, id)
+		if err != nil {
+			return pipeline.Job{}, fmt.Errorf("reset purged frames: %w", err)
+		}
+		if tag.RowsAffected() > 0 {
+			stage = pipeline.StatusExtractingFrames
+		}
+	}
+
 	if _, err := tx.Exec(ctx, `UPDATE jobs SET status = $2, progress = $3,
 			attempts = 0, rate_limit_retries = 0, deferrals = 0,
 			error_code = NULL, error_message = NULL, finished_at = NULL,
@@ -158,6 +175,18 @@ func (r *Repo) ResetForReplay(ctx context.Context, id uuid.UUID, outboxPayload [
 		return pipeline.Job{}, err
 	}
 	return job, nil
+}
+
+// LastReplayAt returns when the job was last replayed; ok is false if never.
+func (r *Repo) LastReplayAt(ctx context.Context, id uuid.UUID) (at time.Time, ok bool, err error) {
+	var t *time.Time
+	if err := r.pool.QueryRow(ctx, `SELECT max(at) FROM job_events WHERE job_id = $1 AND type = 'replay'`, id).Scan(&t); err != nil {
+		return time.Time{}, false, fmt.Errorf("last replay: %w", err)
+	}
+	if t == nil {
+		return time.Time{}, false, nil
+	}
+	return *t, true, nil
 }
 
 // PurgeFrameImages clears the stored JPEG bytes of frames whose job reached a

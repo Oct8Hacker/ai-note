@@ -494,6 +494,8 @@ GET /notion/pages   Authorization: Bearer <notion_token>
 | `JOB_NOT_FOUND` | 404 | Unknown job |
 | `JOB_NOT_FINISHED` | 409 | Results requested before terminal |
 | `UNAUTHORIZED` | 401 | Missing/invalid admin token |
+| `INVALID_LIMIT` | 400 | `GET /admin/dlq` `limit` is not a positive integer |
+| `JOB_NOT_DEAD_LETTERED` | 409 | Replay requested for a job that is not `DEAD_LETTERED` |
 | `INTERNAL` | 500 | Unexpected error (details only in logs) |
 
 **Job error codes** (`error.code` on `FAILED` / `DEAD_LETTERED`)

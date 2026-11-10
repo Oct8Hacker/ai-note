@@ -49,6 +49,14 @@ type fakeRepo struct {
 	viewErr error
 	failErr error
 	failed  []string
+
+	replayAt  time.Time
+	replayed  bool
+	replayErr error
+}
+
+func (f *fakeRepo) LastReplayAt(context.Context, uuid.UUID) (time.Time, bool, error) {
+	return f.replayAt, f.replayed, f.replayErr
 }
 
 func (f *fakeRepo) GetJobView(context.Context, uuid.UUID) (jobs.JobView, error) {
@@ -65,6 +73,11 @@ func (f *fakeRepo) Fail(_ context.Context, _ uuid.UUID, st pipeline.Status, code
 
 func run(t *testing.T, repo *fakeRepo) (*fakeAck, *time.Duration) {
 	t.Helper()
+	return runWith(t, repo, nil)
+}
+
+func runWith(t *testing.T, repo *fakeRepo, hdr amqp.Table) (*fakeAck, *time.Duration) {
+	t.Helper()
 	a := newAck()
 	var slept time.Duration
 	w := &watcher{repo: repo, log: slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -72,7 +85,7 @@ func run(t *testing.T, repo *fakeRepo) (*fakeAck, *time.Duration) {
 		sleep:   func(_ context.Context, d time.Duration) { slept = d }}
 	w.handle(context.Background(), queue.Delivery{
 		Msg: queue.Message{V: 1, JobID: uuid.New()},
-		Raw: amqp.Delivery{Acknowledger: a},
+		Raw: amqp.Delivery{Acknowledger: a, Headers: hdr},
 	})
 	return a, &slept
 }
@@ -116,4 +129,31 @@ func TestHandleDBErrorRequeuesWithBackoff(t *testing.T) {
 		require.Equal(t, 1, a.requeue)
 		require.Equal(t, 50*time.Millisecond, *slept)
 	}
+}
+
+func xdeath(at time.Time) amqp.Table {
+	return amqp.Table{"x-death": []any{amqp.Table{"time": at, "reason": "delivery_limit"}}}
+}
+
+func TestHandleStaleCopyOfReplayedJobIsSkipped(t *testing.T) {
+	now := time.Now()
+	repo := &fakeRepo{view: jobs.JobView{Status: pipeline.StatusSummarizing}, replayed: true, replayAt: now}
+	a, _ := runWith(t, repo, xdeath(now.Add(-time.Minute)))
+	require.Empty(t, repo.failed, "a replay newer than the dead-letter must not be undone")
+	require.Equal(t, 1, a.acks)
+}
+
+func TestHandleDeadLetterAfterReplayStillFails(t *testing.T) {
+	now := time.Now()
+	repo := &fakeRepo{view: jobs.JobView{Status: pipeline.StatusSummarizing}, replayed: true, replayAt: now.Add(-time.Minute)}
+	a, _ := runWith(t, repo, xdeath(now))
+	require.Equal(t, []string{"DEAD_LETTERED/DELIVERY_LIMIT_EXCEEDED"}, repo.failed)
+	require.Equal(t, 1, a.acks)
+}
+
+func TestHandleReplayLookupErrorRequeues(t *testing.T) {
+	repo := &fakeRepo{view: jobs.JobView{Status: pipeline.StatusSummarizing}, replayErr: errors.New("db down")}
+	a, _ := runWith(t, repo, xdeath(time.Now()))
+	require.Equal(t, 0, a.acks)
+	require.Equal(t, 1, a.requeue)
 }

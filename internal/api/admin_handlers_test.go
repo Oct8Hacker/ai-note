@@ -230,3 +230,14 @@ func TestReplayErrors(t *testing.T) {
 	requireErr(t, do(h, "POST", "/admin/dlq/"+uuid.NewString()+"/replay", body, adminAuth), 500, "INTERNAL")
 	require.Equal(t, 0, k.n)
 }
+
+func TestAdminBearerSchemeCaseInsensitive(t *testing.T) {
+	s, _, _ := newAdminServer(t, &fakeAdmin{}, nil)
+	h := s.Handler()
+	for _, scheme := range []string{"Bearer", "bearer", "BEARER", "bEaReR"} {
+		rec := do(h, "GET", "/admin/dlq", "", map[string]string{"Authorization": scheme + " " + adminTok})
+		require.Equal(t, 200, rec.Code, scheme)
+	}
+	// The token itself stays case-sensitive.
+	requireErr(t, do(h, "GET", "/admin/dlq", "", map[string]string{"Authorization": "bearer ADMIN-SECRET"}), 401, "UNAUTHORIZED")
+}

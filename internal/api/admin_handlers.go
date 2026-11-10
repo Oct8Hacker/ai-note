@@ -55,7 +55,7 @@ func (s *Server) registerAdmin(mux *http.ServeMux) {
 func (s *Server) adminOnly(next http.HandlerFunc) http.HandlerFunc {
 	want := sha256.Sum256([]byte(s.cfg.AdminToken))
 	return func(w http.ResponseWriter, r *http.Request) {
-		got, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+		got, ok := bearerToken(r.Header.Get("Authorization"))
 		sum := sha256.Sum256([]byte(got))
 		match := subtle.ConstantTimeCompare(sum[:], want[:]) == 1
 		if !ok || got == "" || s.cfg.AdminToken == "" || !match {
@@ -64,6 +64,16 @@ func (s *Server) adminOnly(next http.HandlerFunc) http.HandlerFunc {
 		}
 		next(w, r)
 	}
+}
+
+// bearerToken extracts the credentials of an Authorization header whose scheme
+// is "Bearer", matched case-insensitively (RFC 7235 section 2.1).
+func bearerToken(h string) (string, bool) {
+	const scheme = "bearer "
+	if len(h) < len(scheme) || !strings.EqualFold(h[:len(scheme)], scheme) {
+		return "", false
+	}
+	return h[len(scheme):], true
 }
 
 func (s *Server) listDLQ(w http.ResponseWriter, r *http.Request) {

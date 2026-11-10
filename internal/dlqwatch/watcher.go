@@ -14,6 +14,7 @@ import (
 	"ainote/internal/queue"
 
 	"github.com/google/uuid"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 const (
@@ -25,6 +26,7 @@ const (
 // store is the slice of *jobs.Repo the watcher uses.
 type store interface {
 	GetJobView(ctx context.Context, id uuid.UUID) (jobs.JobView, error)
+	LastReplayAt(ctx context.Context, id uuid.UUID) (time.Time, bool, error)
 	Fail(ctx context.Context, id uuid.UUID, terminal pipeline.Status, code, msg string) error
 }
 
@@ -71,6 +73,20 @@ func (w *watcher) handle(ctx context.Context, d queue.Delivery) {
 		w.ack(d)
 		return
 	}
+	// A replay newer than this dead-letter makes the audit copy stale: acting
+	// on it would undo the replay.
+	if dlAt, ok := deadLetteredAt(d); ok {
+		rAt, replayed, err := w.repo.LastReplayAt(ctx, id)
+		if err != nil {
+			w.retryLater(ctx, d, id, err)
+			return
+		}
+		if replayed && rAt.After(dlAt) {
+			w.log.Info("ignoring stale dead-letter copy of replayed job", "job_id", id)
+			w.ack(d)
+			return
+		}
+	}
 	err = w.repo.Fail(ctx, id, pipeline.StatusDeadLettered, CodeDeliveryLimit,
 		"processing kept crashing on this video (broker delivery limit exceeded)")
 	switch {
@@ -82,6 +98,20 @@ func (w *watcher) handle(ctx context.Context, d queue.Delivery) {
 	default:
 		w.retryLater(ctx, d, id, err)
 	}
+}
+
+// deadLetteredAt returns the latest broker dead-lettering time recorded in the
+// x-death header; ok is false when the header is absent or unreadable.
+func deadLetteredAt(d queue.Delivery) (time.Time, bool) {
+	deaths, _ := d.Raw.Headers["x-death"].([]any)
+	var latest time.Time
+	for _, e := range deaths {
+		tbl, _ := e.(amqp.Table)
+		if t, ok := tbl["time"].(time.Time); ok && t.After(latest) {
+			latest = t
+		}
+	}
+	return latest, !latest.IsZero()
 }
 
 func (w *watcher) ack(d queue.Delivery) {

@@ -137,3 +137,62 @@ func TestPurgeFrameImages(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, 0, n)
 }
+
+func TestReplayRecapturesPurgedFrames(t *testing.T) {
+	ctx := context.Background()
+	r, id := newJobIn(t, pipeline.StatusPublishing)
+	insertFrame(t, r, id, 0)
+	insertFrame(t, r, id, 1)
+	insertFrame(t, r, id, 2)
+	// Frame 2 already reached Notion: its bytes are no longer needed.
+	_, err := r.pool.Exec(ctx, `UPDATE job_frames SET notion_file_upload_id='up_2', notion_uploaded_at=now() WHERE job_id=$1 AND idx=2`, id)
+	require.NoError(t, err)
+
+	require.NoError(t, r.Fail(ctx, id, pipeline.StatusDeadLettered, "RETRIES_EXHAUSTED", "notion limit"))
+	_, err = r.pool.Exec(ctx, `UPDATE jobs SET finished_at = now() - interval '25 hours' WHERE id=$1`, id)
+	require.NoError(t, err)
+	n, err := r.PurgeFrameImages(ctx, 24*time.Hour)
+	require.NoError(t, err)
+	require.EqualValues(t, 3, n)
+
+	job, err := r.ResetForReplay(ctx, id, []byte("p"))
+	require.NoError(t, err)
+	require.Equal(t, pipeline.StatusExtractingFrames, job.Status, "purged frames force a re-run of frame extraction")
+
+	status := func(idx int) string {
+		var s string
+		require.NoError(t, r.pool.QueryRow(ctx, `SELECT status FROM job_frames WHERE job_id=$1 AND idx=$2`, id, idx).Scan(&s))
+		return s
+	}
+	require.Equal(t, "pending", status(0))
+	require.Equal(t, "pending", status(1))
+	require.Equal(t, "captured", status(2), "uploaded frame is left alone")
+	require.Equal(t, 0, count(t, r, `SELECT count(*) FROM job_frames WHERE job_id=$1 AND idx<2 AND (captured_sec IS NOT NULL OR verified)`, id))
+	require.Equal(t, 3, count(t, r, `SELECT count(*) FROM job_frames WHERE job_id=$1 AND caption='cap'`, id), "metadata kept")
+}
+
+func TestReplayKeepsStageWhenFramesIntact(t *testing.T) {
+	ctx := context.Background()
+	r, id := newJobIn(t, pipeline.StatusPublishing)
+	insertFrame(t, r, id, 0)
+	require.NoError(t, r.Fail(ctx, id, pipeline.StatusDeadLettered, "RETRIES_EXHAUSTED", "x"))
+	job, err := r.ResetForReplay(ctx, id, []byte("p"))
+	require.NoError(t, err)
+	require.Equal(t, pipeline.StatusPublishing, job.Status)
+	require.Equal(t, 1, count(t, r, `SELECT count(*) FROM job_frames WHERE job_id=$1 AND status='captured' AND image_jpeg IS NOT NULL`, id))
+}
+
+func TestLastReplayAt(t *testing.T) {
+	ctx := context.Background()
+	r, id := newJobIn(t, pipeline.StatusSummarizing)
+	_, ok, err := r.LastReplayAt(ctx, id)
+	require.NoError(t, err)
+	require.False(t, ok)
+	require.NoError(t, r.Fail(ctx, id, pipeline.StatusDeadLettered, "RETRIES_EXHAUSTED", "x"))
+	_, err = r.ResetForReplay(ctx, id, []byte("p"))
+	require.NoError(t, err)
+	at, ok, err := r.LastReplayAt(ctx, id)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.WithinDuration(t, time.Now(), at, time.Minute)
+}
