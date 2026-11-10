@@ -136,6 +136,7 @@ func TestSetRejectsInvalid(t *testing.T) {
 		{"llm_429_rate": "1.5"},
 		{"llm_429_rate": "-0.1"},
 		{"llm_429_rate": "abc"},
+		{"llm_429_rate": "NaN"},
 		{"frame_fail_all": "maybe"},
 		{"stage_delay_ms": "60001"},
 		{"stage_delay_ms": "-1"},

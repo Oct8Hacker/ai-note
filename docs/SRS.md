@@ -496,6 +496,7 @@ GET /notion/pages   Authorization: Bearer <notion_token>
 | `UNAUTHORIZED` | 401 | Missing/invalid admin token |
 | `INVALID_LIMIT` | 400 | `GET /admin/dlq` `limit` is not a positive integer |
 | `JOB_NOT_DEAD_LETTERED` | 409 | Replay requested for a job that is not `DEAD_LETTERED` |
+| `INVALID_FAULTS` | 400 | `PUT /admin/faults` has an unknown key or an out-of-range / malformed value |
 | `INTERNAL` | 500 | Unexpected error (details only in logs) |
 
 **Job error codes** (`error.code` on `FAILED` / `DEAD_LETTERED`)

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"sort"
 	"strconv"
 	"sync"
@@ -159,7 +160,7 @@ func (f *Faults) load(ctx context.Context) (effective, error) {
 
 func parseRate(s string, fallback float64) float64 {
 	v, err := strconv.ParseFloat(s, 64)
-	if err != nil || v < 0 || v > 1 {
+	if err != nil || math.IsNaN(v) || v < 0 || v > 1 {
 		return fallback
 	}
 	return v
@@ -240,7 +241,7 @@ func (f *Faults) Set(ctx context.Context, m map[string]string) error {
 		switch k {
 		case keyLLM, keyNotion, keyYouTube, keyFrameRate:
 			r, err := strconv.ParseFloat(v, 64)
-			if err != nil || r < 0 || r > 1 {
+			if err != nil || math.IsNaN(r) || r < 0 || r > 1 {
 				return invalidf("%s must be a number in [0,1]", k)
 			}
 		case keyFrameAll:
