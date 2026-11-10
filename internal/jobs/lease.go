@@ -35,8 +35,10 @@ var claimAfterRead func()
 
 // Claim takes the job's lease for workerID. The lease is taken unless another
 // owner holds an unexpired lease AND ownerAlive(owner) is true. All time
-// comparisons use the database clock. The conditional UPDATE on the observed
-// owner makes concurrent claims race-free: the loser gets Busy.
+// comparisons use the database clock. The UPDATE re-checks both the observed
+// owner and lease validity at write time (SRS FR-CRASH-1), so concurrent claims
+// and a renewal between the read and the write are race-free: the loser gets
+// Busy. When err != nil the returned ClaimOutcome is meaningless.
 func (r *Repo) Claim(ctx context.Context, id uuid.UUID, workerID string, ttl time.Duration,
 	ownerAlive func(owner string) (bool, error)) (pipeline.Job, ClaimOutcome, error) {
 	var (
