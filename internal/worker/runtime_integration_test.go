@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -38,7 +39,12 @@ const (
 	testToken      = "secret-notion-token"
 )
 
-func testLog() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
+func testLog() *slog.Logger {
+	if os.Getenv("TEST_LOG") != "" {
+		return slog.New(slog.NewTextHandler(os.Stderr, nil))
+	}
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
 
 func testTopology() queue.Topology {
 	return queue.Topology{RetryDelays: testRetryDelays, DeferDelay: testDeferDelay}
@@ -48,6 +54,7 @@ func testTopology() queue.Topology {
 type env struct {
 	t      *testing.T
 	pool   *pgxpool.Pool
+	dbName string
 	repo   *jobs.Repo
 	rdb    *redis.Client
 	sealer *crypto.Sealer
@@ -76,7 +83,7 @@ func newEnv(t *testing.T) *env {
 	sealer, err := crypto.NewSealer(key)
 	require.NoError(t, err)
 
-	e := &env{t: t, pool: pool, repo: jobs.NewRepo(pool), rdb: newRedis(t), sealer: sealer}
+	e := &env{t: t, pool: pool, dbName: name, repo: jobs.NewRepo(pool), rdb: newRedis(t), sealer: sealer}
 	e.conn = e.dial()
 	e.pub = queue.NewPublisher(e.conn, testTopology())
 	e.purge()
@@ -467,6 +474,11 @@ func TestDuplicateDeliveryDefers(t *testing.T) {
 	// The deferred duplicate comes back, finds the job terminal and is dropped.
 	require.Eventually(t, func() bool { return e.queueDepth() == 0 }, 10*time.Second, 100*time.Millisecond)
 	require.Equal(t, 1, s.publish.CallCount(), "job must complete exactly once")
+	var completions int
+	require.NoError(t, e.pool.QueryRow(context.Background(), `SELECT count(*) FROM job_events
+		WHERE job_id=$1 AND type='transition' AND from_status='PUBLISHING' AND to_status='COMPLETED'`,
+		m.JobID).Scan(&completions))
+	require.Equal(t, 1, completions)
 	require.Equal(t, 1, s.summarize.CallCount())
 	require.Equal(t, 1, s.transcribe.CallCount())
 }
@@ -548,4 +560,37 @@ func TestGracefulShutdown(t *testing.T) {
 	e.start(testConfig("w2"), s.byStatus())
 	e.waitStatus(m.JobID, pipeline.StatusCompleted, 15*time.Second)
 	require.Equal(t, 1, s.transcribe.CallCount())
+}
+
+// setDBAvailable blocks or allows new connections to the test database and
+// kills the existing ones, simulating a Postgres outage that then recovers.
+func (e *env) setDBAvailable(ok bool) {
+	e.t.Helper()
+	ctx := context.Background()
+	admin, err := pgxpool.New(ctx, pgAdminURL)
+	require.NoError(e.t, err)
+	defer admin.Close()
+	_, err = admin.Exec(ctx, fmt.Sprintf("ALTER DATABASE %s ALLOW_CONNECTIONS %t", e.dbName, ok))
+	require.NoError(e.t, err)
+	if !ok {
+		_, err = admin.Exec(ctx, "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=$1", e.dbName)
+		require.NoError(e.t, err)
+	}
+}
+
+func TestTransientDBOutageDoesNotDeadLetter(t *testing.T) {
+	e := newEnv(t)
+	s := newStages()
+	cfg := testConfig("w1")
+	cfg.InfraBackoff = []time.Duration{300 * time.Millisecond}
+	e.start(cfg, s.byStatus())
+
+	m := e.newJob("dQw4w9WgXcQ")
+	e.setDBAvailable(false)
+	require.NoError(t, e.pub.PublishWork(context.Background(), m))
+	time.Sleep(1200 * time.Millisecond) // outage: ~4 backed-off deliveries of 10; with no backoff the limit would be hit at once
+	e.setDBAvailable(true)
+
+	e.waitStatus(m.JobID, pipeline.StatusCompleted, 20*time.Second)
+	require.Equal(t, 1, s.publish.CallCount())
 }

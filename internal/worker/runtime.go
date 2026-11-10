@@ -34,7 +34,16 @@ type Config struct {
 
 	RetryDelays []time.Duration
 	DeferDelay  time.Duration // only recorded as the job's next_attempt_at on a defer
+
+	// InfraBackoff is the wait before requeueing a message after an
+	// infrastructure error, indexed by the delivery count (the last entry
+	// repeats). Empty means DefaultInfraBackoff.
+	InfraBackoff []time.Duration
 }
+
+// DefaultInfraBackoff keeps a short Postgres or Redis outage from burning a
+// message's delivery limit: every requeue on a quorum queue counts as a delivery.
+var DefaultInfraBackoff = []time.Duration{time.Second, 2 * time.Second, 4 * time.Second, 5 * time.Second}
 
 // Runtime consumes jobs.work and drives each job through its stages.
 type Runtime struct {
@@ -77,7 +86,7 @@ func (rt *Runtime) Run(ctx context.Context, conn *queue.Conn) error {
 	}()
 	return queue.Consume(ctx, conn, queue.QueueWork, rt.cfg.Prefetch, func(_ context.Context, d queue.Delivery) {
 		if ctx.Err() != nil { // shutting down: take no new work
-			rt.settle(d, nack, rt.log)
+			rt.settle(ctx, d, nack, rt.log)
 			return
 		}
 		rt.Handle(hard, d)
@@ -87,12 +96,29 @@ func (rt *Runtime) Run(ctx context.Context, conn *queue.Conn) error {
 type action int
 
 const (
-	ack action = iota
-	nack
+	ack       action = iota
+	nack             // requeue now (shutdown)
+	nackInfra        // requeue after a backoff (infrastructure error)
 )
 
-// settle acknowledges or requeues d.
-func (rt *Runtime) settle(d queue.Delivery, a action, log *slog.Logger) {
+// settle acknowledges or requeues d. For nackInfra it first waits a backoff
+// that grows with the delivery count; if ctx ends meanwhile it requeues at once.
+func (rt *Runtime) settle(ctx context.Context, d queue.Delivery, a action, log *slog.Logger) {
+	if a == nackInfra {
+		bo := rt.cfg.InfraBackoff
+		if len(bo) == 0 {
+			bo = DefaultInfraBackoff
+		}
+		wait := bo[min(d.DeliveryCount(), len(bo)-1)]
+		log.Warn("infrastructure error, backing off before requeue", "wait", wait)
+		t := time.NewTimer(wait)
+		select {
+		case <-t.C:
+		case <-ctx.Done():
+		}
+		t.Stop()
+		a = nack
+	}
 	var err error
 	if a == ack {
 		err = d.Ack()
@@ -117,7 +143,7 @@ func (rt *Runtime) Handle(ctx context.Context, d queue.Delivery) {
 
 	if d.DeliveryCount() >= rt.cfg.DeliveryLimit-1 {
 		log.Warn("delivery limit reached", "deliveries", d.DeliveryCount())
-		rt.settle(d, rt.deadLetter(d.Msg, "DELIVERY_LIMIT_EXCEEDED", "message redelivered too many times", log), log)
+		rt.settle(ctx, d, rt.deadLetter(d.Msg, "DELIVERY_LIMIT_EXCEEDED", "message redelivered too many times", log), log)
 		return
 	}
 
@@ -127,16 +153,16 @@ func (rt *Runtime) Handle(ctx context.Context, d queue.Delivery) {
 	cancel()
 	if err != nil {
 		log.Error("claim failed", "err", err)
-		rt.settle(d, nack, log)
+		rt.settle(ctx, d, nackInfra, log)
 		return
 	}
 	switch outcome {
 	case jobs.Terminal, jobs.NotFound:
 		log.Info("nothing to do", "outcome", int(outcome))
-		rt.settle(d, ack, log)
+		rt.settle(ctx, d, ack, log)
 		return
 	case jobs.Busy:
-		rt.settle(d, rt.deferJob(d.Msg, log), log)
+		rt.settle(ctx, d, rt.deferJob(d.Msg, log), log)
 		return
 	}
 
@@ -159,7 +185,7 @@ func (rt *Runtime) Handle(ctx context.Context, d queue.Delivery) {
 		log.Warn("release lease failed", "err", err)
 	}
 	rcancel()
-	rt.settle(d, a, log)
+	rt.settle(ctx, d, a, log)
 }
 
 // renewLoop extends the lease every LeaseTTL/3. If the lease is lost it flags
@@ -195,12 +221,12 @@ func (rt *Runtime) process(ctx, runCtx context.Context, lost *atomic.Bool, d que
 		defer cancel()
 		if err := rt.repo.Transition(fctx, id, pipeline.StatusTranscribing, rt.cfg.WorkerID, nil); err != nil {
 			log.Error("transition to TRANSCRIBING failed", "err", err)
-			return nack
+			return nackInfra
 		}
 		var err error
 		if job, err = rt.repo.GetJob(fctx, id); err != nil {
 			log.Error("reload job failed", "err", err)
-			return nack
+			return nackInfra
 		}
 	}
 
@@ -245,7 +271,7 @@ func (rt *Runtime) process(ctx, runCtx context.Context, lost *atomic.Bool, d que
 		if err != nil {
 			cancel()
 			slg.Error("complete stage failed", "err", err)
-			return nack
+			return nackInfra
 		}
 		slg.Info("stage completed", "next", string(next))
 		if next.IsTerminal() {
@@ -256,7 +282,7 @@ func (rt *Runtime) process(ctx, runCtx context.Context, lost *atomic.Bool, d que
 		cancel()
 		if err != nil {
 			slg.Error("reload job failed", "err", err)
-			return nack
+			return nackInfra
 		}
 	}
 }
@@ -271,6 +297,15 @@ func (rt *Runtime) stageError(ctx context.Context, lost *atomic.Bool, d queue.De
 		return ack
 	}
 	id := d.Msg.JobID
+	// Fence a zombie: if the lease is gone, another worker owns the job and
+	// must not have its state or retry budget changed by us.
+	rctx, rcancel := finishCtx()
+	rerr := rt.repo.RenewLease(rctx, id, rt.cfg.WorkerID, rt.cfg.LeaseTTL)
+	rcancel()
+	if errors.Is(rerr, jobs.ErrLeaseLost) {
+		log.Warn("lease lost before recording stage failure, abandoning", "err", err)
+		return ack
+	}
 	log.Warn("stage failed", "err", err, "code", pipeline.ErrorCode(err))
 	switch pipeline.Classify(err) {
 	case pipeline.ClassFatal:
@@ -294,14 +329,14 @@ func (rt *Runtime) retry(d queue.Delivery, kind jobs.RetryKind, provider string,
 	dec, err := rt.repo.ScheduleRetry(fctx, d.Msg.JobID, kind, provider, rt.cfg.RetryDelays, retryAfter, budget, errCode)
 	if err != nil {
 		log.Error("schedule retry failed", "err", err)
-		return nack
+		return nackInfra
 	}
 	if dec.Exhausted {
 		return rt.deadLetter(d.Msg, exhaustedCode, "retry budget exhausted", log)
 	}
 	if err := rt.pub.PublishRetry(fctx, d.Msg, dec.Delay); err != nil {
 		log.Error("publish retry failed", "err", err)
-		return nack
+		return nackInfra
 	}
 	log.Info("retry scheduled", "kind", string(kind), "n", dec.N, "delay", dec.Delay)
 	return ack
@@ -318,14 +353,14 @@ func (rt *Runtime) deferJob(m queue.Message, log *slog.Logger) action {
 			return ack
 		}
 		log.Error("schedule defer failed", "err", err)
-		return nack
+		return nackInfra
 	}
 	if dec.Exhausted {
 		return rt.deadLetter(m, "RETRIES_EXHAUSTED", "job stayed busy on another worker", log)
 	}
 	if err := rt.pub.PublishDefer(fctx, m); err != nil {
 		log.Error("publish defer failed", "err", err)
-		return nack
+		return nackInfra
 	}
 	log.Info("job busy elsewhere, deferred", "n", dec.N)
 	return ack
@@ -338,7 +373,7 @@ func (rt *Runtime) fail(id uuid.UUID, terminal pipeline.Status, code, msg string
 	err := rt.repo.Fail(fctx, id, terminal, code, msg)
 	if err != nil && !errors.Is(err, jobs.ErrIllegalTransition) {
 		log.Error("fail job failed", "err", err)
-		return nack
+		return nackInfra
 	}
 	log.Warn("job failed", "status", string(terminal), "code", code)
 	return ack
@@ -354,11 +389,11 @@ func (rt *Runtime) deadLetter(m queue.Message, code, msg string, log *slog.Logge
 	}
 	if err != nil {
 		log.Error("dead-letter state change failed", "err", err)
-		return nack
+		return nackInfra
 	}
 	if err := rt.pub.PublishDeadLetter(fctx, m, code); err != nil {
 		log.Error("publish dead letter failed", "err", err)
-		return nack
+		return nackInfra
 	}
 	log.Warn("job dead-lettered", "code", code)
 	return ack
