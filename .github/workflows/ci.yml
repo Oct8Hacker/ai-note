@@ -16,6 +16,12 @@ jobs:
         with:
           version: v2.1.6
       - run: make test
+      - name: Ensure ffmpeg is available for frame integration tests
+        run: |
+          if ! command -v ffmpeg >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends ffmpeg
+          fi
       - run: make test-integration
 
   extension:
