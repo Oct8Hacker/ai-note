@@ -168,6 +168,12 @@ func (s *Server) putFaults(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.deps.Faults.Set(r.Context(), flags); err != nil {
+		// Validation failures (unknown key, out-of-range value) are the caller's fault.
+		var inv interface{ Invalid() bool }
+		if errors.As(err, &inv) && inv.Invalid() {
+			WriteError(w, http.StatusBadRequest, "INVALID_FAULTS", err.Error())
+			return
+		}
 		internalError(w, r, fmt.Errorf("set faults: %w", err))
 		return
 	}

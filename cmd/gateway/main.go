@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/rand"
 	"net/http"
 	"os"
 	"os/signal"
@@ -18,6 +19,7 @@ import (
 	"ainote/internal/config"
 	"ainote/internal/crypto"
 	"ainote/internal/dlqwatch"
+	"ainote/internal/faults"
 	"ainote/internal/health"
 	"ainote/internal/jobs"
 	"ainote/internal/logging"
@@ -146,7 +148,8 @@ func run() error {
 		Outbox: relay,
 		Health: checker,
 		Admin:  repo,
-		// Faults stays nil until Task A12 provides the Redis-backed FaultAdmin.
+		// Zero env defaults: the gateway only reads/writes the Redis overrides.
+		Faults: faults.New(rdb, config.FaultDefaults{}, rand.Float64),
 	})
 	srv := &http.Server{
 		Addr:              ":" + strconv.Itoa(cfg.Port),

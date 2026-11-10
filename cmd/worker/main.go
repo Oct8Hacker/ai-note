@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/rand"
 	"net/http"
 	"os"
 	"os/signal"
@@ -18,6 +19,7 @@ import (
 
 	"ainote/internal/config"
 	"ainote/internal/crypto"
+	"ainote/internal/faults"
 	"ainote/internal/jobs"
 	"ainote/internal/logging"
 	"ainote/internal/pipeline"
@@ -119,8 +121,8 @@ func run() error {
 		RetryDelays:         cfg.RetryDelays,
 		DeferDelay:          cfg.DeferDelay,
 	}, repo, queue.NewPublisher(mq, top), rdb, sealer, fakeStages(),
-		// Placeholders until the fault injector (A12) and stages (Z1) replace them.
-		limiter, pipelinetest.NoFaults{}, log)
+		// Fake stages stay until Z1 replaces them.
+		limiter, faults.New(rdb, cfg.Faults, rand.Float64), log)
 
 	log.Info("worker started", "worker_id", workerID)
 	err = rt.Run(ctx, mq)

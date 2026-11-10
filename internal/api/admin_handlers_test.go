@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -50,15 +51,21 @@ func (f *fakeAdmin) ResetForReplay(_ context.Context, id uuid.UUID, payload []by
 	return j, nil
 }
 
+type invalidErr struct{}
+
+func (invalidErr) Error() string { return "bad flag" }
+func (invalidErr) Invalid() bool { return true }
+
 type fakeFaults struct {
-	m   map[string]string
-	set map[string]string
+	m      map[string]string
+	set    map[string]string
+	setErr error
 }
 
 func (f *fakeFaults) Get(context.Context) (map[string]string, error) { return f.m, nil }
 func (f *fakeFaults) Set(_ context.Context, m map[string]string) error {
 	f.set = m
-	return nil
+	return f.setErr
 }
 
 func newAdminServer(t *testing.T, adm *fakeAdmin, faults FaultAdmin) (*Server, *fakeKicker, *crypto.Sealer) {
@@ -125,6 +132,11 @@ func TestFaultRoutes(t *testing.T) {
 	require.Equal(t, map[string]string{"notion": "1"}, ff.set)
 
 	requireErr(t, do(h, "PUT", "/admin/faults", `nope`, adminAuth), 400, "INVALID_JSON")
+
+	ff.setErr = fmt.Errorf("wrapped: %w", invalidErr{})
+	requireErr(t, do(h, "PUT", "/admin/faults", `{"bogus":"1"}`, adminAuth), 400, "INVALID_FAULTS")
+	ff.setErr = errors.New("redis down")
+	requireErr(t, do(h, "PUT", "/admin/faults", `{"notion":"1"}`, adminAuth), 500, "INTERNAL")
 }
 
 func TestListDLQ(t *testing.T) {
