@@ -19,7 +19,7 @@ Every open task is a GitHub issue (A6–A12 = #1–#7, B1–B16 = #8–#23, Z1�
 | [A9](A9.md) | Worker runtime | A | 12–13 Nov | ✅ done |
 | [A10](A10.md) | DLQ watcher and admin endpoints | A | 13 Nov | ✅ done |
 | [A11](A11.md) | Redis rate limiter | A | 14 Nov | ✅ done |
-| [A12](A12.md) | Fault injection | A | 15 Nov | 🔨 in progress |
+| [A12](A12.md) | Fault injection | A | 15 Nov | ✅ done |
 | [B1](B1.md) | YouTube tool wrapper | B | 10 Nov | ⏳ pending |
 | [B2](B2.md) | Transcript stage | B | 10 Nov | ⏳ pending |
 | [B3](B3.md) | LLM providers and guarded client | B | 11 Nov | ⏳ pending |
