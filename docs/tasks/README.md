@@ -20,15 +20,15 @@ Every open task is a GitHub issue (A6–A12 = #1–#7, B1–B16 = #8–#23, Z1�
 | [A10](A10.md) | DLQ watcher and admin endpoints | A | 13 Nov | ✅ done |
 | [A11](A11.md) | Redis rate limiter | A | 14 Nov | ✅ done |
 | [A12](A12.md) | Fault injection | A | 15 Nov | ✅ done |
-| [B1](B1.md) | YouTube tool wrapper | B | 10 Nov | ⏳ pending |
-| [B2](B2.md) | Transcript stage | B | 10 Nov | ⏳ pending |
-| [B3](B3.md) | LLM providers and guarded client | B | 11 Nov | ⏳ pending |
-| [B4](B4.md) | Synthesis stage | B | 11 Nov | ⏳ pending |
-| [B5](B5.md) | Frame capture primitives | B | 12 Nov | ⏳ pending |
-| [B6](B6.md) | Frame stage with verification | B | 15 Nov (basic capture path by 12 Nov) | ⏳ pending |
-| [B7](B7.md) | Notion API client | B | 12 Nov | ⏳ pending |
-| [B8](B8.md) | Notion page content builder | B | 13 Nov | ⏳ pending |
-| [B9](B9.md) | Publish stage (parent resolution, idempotent page) | B | 13 Nov (basic by 12 Nov) | ⏳ pending |
+| [B1](B1.md) | YouTube tool wrapper | B | 10 Nov | ✅ done |
+| [B2](B2.md) | Transcript stage | B | 10 Nov | ✅ done |
+| [B3](B3.md) | LLM providers and guarded client | B | 11 Nov | ✅ done |
+| [B4](B4.md) | Synthesis stage | B | 11 Nov | ✅ done |
+| [B5](B5.md) | Frame capture primitives | B | 12 Nov | ✅ done |
+| [B6](B6.md) | Frame stage with verification | B | 15 Nov (basic capture path by 12 Nov) | ✅ done |
+| [B7](B7.md) | Notion API client | B | 12 Nov | ✅ done |
+| [B8](B8.md) | Notion page content builder | B | 13 Nov | ✅ done |
+| [B9](B9.md) | Publish stage (parent resolution, idempotent page) | B | 13 Nov (basic by 12 Nov) | ✅ done |
 | [B10](B10.md) | Gateway Notion endpoints | B | 13 Nov | ⏳ pending |
 | [B11](B11.md) | Preflight doctor | B | 16 Nov | ⏳ pending |
 | [B12](B12.md) | Extension scaffold, shared client, message mapping | B | 13 Nov | ⏳ pending |
