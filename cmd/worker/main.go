@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -19,14 +20,17 @@ import (
 
 	"ainote/internal/config"
 	"ainote/internal/crypto"
+	"ainote/internal/doctor"
 	"ainote/internal/faults"
 	"ainote/internal/jobs"
+	"ainote/internal/llm"
 	"ainote/internal/logging"
 	"ainote/internal/pipeline"
 	"ainote/internal/pipeline/pipelinetest"
 	"ainote/internal/queue"
 	"ainote/internal/ratelimit"
 	"ainote/internal/worker"
+	"ainote/internal/youtube"
 )
 
 func main() {
@@ -53,13 +57,6 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
-	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
-	if err != nil {
-		return fmt.Errorf("postgres: %w", err)
-	}
-	defer pool.Close()
-	repo := jobs.NewRepo(pool)
-
 	ropts, err := redis.ParseURL(cfg.RedisURL)
 	if err != nil {
 		return fmt.Errorf("redis url: %w", err)
@@ -71,13 +68,45 @@ func run() error {
 		}
 	}()
 
+	buckets, notionTmpl, daily := ratelimit.FromWorkerConfig(cfg)
+	limiter := ratelimit.New(rdb, buckets, notionTmpl, daily, cfg.LimiterMaxWait, time.Now)
+	controls := faults.New(rdb, cfg.Faults, rand.Float64)
+	text, vision, err := llm.FromConfig(cfg, limiter, controls, func(ctx context.Context) { ratelimit.Incr429(ctx, rdb) })
+	if err != nil {
+		log.Warn("doctor could not initialize model clients")
+	}
+	runner := youtube.ExecRunner{}
+	checks := doctor.Checks{Text: text, Vision: vision, Runner: runner, YT: youtube.NewClient(runner, limiter, controls, cfg.YtDlpCookiesFile)}
+	if len(os.Args) == 2 && os.Args[1] == "doctor" {
+		results := runDoctor(ctx, checks)
+		// OAuth is optional because users can paste an integration token.
+		oauth := "Disabled (integration token mode)"
+		if os.Getenv("NOTION_CLIENT_ID") != "" && os.Getenv("NOTION_CLIENT_SECRET") != "" && os.Getenv("NOTION_REDIRECT_URI") != "" {
+			oauth = "Configured"
+		}
+		results = append(results, doctor.Result{Name: "notion_oauth", OK: true, Detail: oauth})
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(results); err != nil {
+			return err
+		}
+		for _, result := range results {
+			if !result.OK {
+				return errors.New("worker preflight failed")
+			}
+		}
+		return nil
+	}
+	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return fmt.Errorf("postgres: %w", err)
+	}
+	defer pool.Close()
+	repo := jobs.NewRepo(pool)
 	sealer, err := crypto.NewSealer(cfg.TokenEncKey)
 	if err != nil {
 		return fmt.Errorf("token sealer: %w", err)
 	}
-
-	buckets, notionTmpl, daily := ratelimit.FromWorkerConfig(cfg)
-	limiter := ratelimit.New(rdb, buckets, notionTmpl, daily, cfg.LimiterMaxWait, time.Now)
 
 	top := queue.Topology{RetryDelays: cfg.RetryDelays, DeferDelay: cfg.DeferDelay}
 	mq, err := queue.Dial(ctx, cfg.AMQPURL, cfg.AMQPHeartbeat, log, func(ch *amqp.Channel) error {
@@ -95,6 +124,23 @@ func run() error {
 	hbCtx, stopHeartbeat := context.WithCancel(context.WithoutCancel(ctx))
 	defer stopHeartbeat()
 	worker.StartHeartbeat(hbCtx, rdb, workerID, cfg.HeartbeatInterval, cfg.HeartbeatTTL)
+	doctorCtx, stopDoctor := context.WithCancel(ctx)
+	doctorDone := make(chan struct{})
+	go func() {
+		defer close(doctorDone)
+		ticker := time.NewTicker(cfg.DoctorInterval)
+		defer ticker.Stop()
+		for {
+			results := runDoctor(doctorCtx, checks)
+			doctor.Publish(doctorCtx, rdb, workerID, results, 120*time.Second)
+			select {
+			case <-doctorCtx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
+	defer func() { stopDoctor(); <-doctorDone }()
 
 	health := worker.HealthServer(":8081")
 	go func() {
@@ -122,12 +168,18 @@ func run() error {
 		DeferDelay:          cfg.DeferDelay,
 	}, repo, queue.NewPublisher(mq, top), rdb, sealer, fakeStages(),
 		// Fake stages stay until Z1 replaces them.
-		limiter, faults.New(rdb, cfg.Faults, rand.Float64), log)
+		limiter, controls, log)
 
 	log.Info("worker started", "worker_id", workerID)
 	err = rt.Run(ctx, mq)
 	log.Info("worker stopped")
 	return err
+}
+
+func runDoctor(ctx context.Context, checks doctor.Checks) []doctor.Result {
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+	return doctor.Run(ctx, checks)
 }
 
 // fakeStages returns stand-in stages that each just sleep for a second, so the
