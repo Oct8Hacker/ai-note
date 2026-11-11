@@ -40,10 +40,16 @@ async function refresh(client: GatewayClient, job: TrackedJob) {
 let inFlight: Promise<void> | undefined;
 export function pollOnce(_now: number): Promise<void> {
   return (inFlight ??= (async () => {
-    const client = new GatewayClient((await getSettings()).gatewayUrl);
+    const { gatewayUrl } = await getSettings();
     // One offline or expired job should not prevent other jobs from updating.
     await Promise.allSettled(
-      (await getJobs()).map((job) => refresh(client, job)),
+      (await getJobs()).map((job) => {
+        const origin = job.gatewayUrl ?? gatewayUrl;
+        return refresh(new GatewayClient(origin), {
+          ...job,
+          gatewayUrl: origin,
+        });
+      }),
     );
     await updateBadge();
   })().finally(() => {

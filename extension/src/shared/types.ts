@@ -55,6 +55,7 @@ export interface NotionPage {
   icon?: string;
 }
 export interface TrackedJob {
+  gatewayUrl?: string;
   notionConnectionId?: string | null;
   jobId: string;
   videoId: string;
