@@ -1,0 +1,17 @@
+.ytp-right-controls button[data-ainote] {
+  width: auto;
+  max-width: min(52vw, 24rem);
+  padding: 0 0.65em;
+  overflow: hidden;
+  font:
+    600 14px/1.2 Arial,
+    sans-serif;
+  color: white;
+  vertical-align: top;
+  white-space: normal;
+  cursor: pointer;
+}
+.ytp-right-controls button[data-ainote]:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -3px;
+}

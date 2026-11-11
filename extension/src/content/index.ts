@@ -1,1 +1,4 @@
-// B13 adds the YouTube player button here.
+import "./button.css";
+import { init } from "./button";
+
+init(window);
