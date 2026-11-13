@@ -24,7 +24,13 @@ export default defineConfig({
         content: "src/content/index.ts",
         popup: "src/popup/index.html",
       },
-      output: { entryFileNames: "[name].js" },
+      output: {
+        entryFileNames: "[name].js",
+        assetFileNames: (asset) =>
+          asset.names.includes("content.css")
+            ? "content.css"
+            : "assets/[name]-[hash][extname]",
+      },
     },
   },
 });
