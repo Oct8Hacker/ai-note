@@ -37,6 +37,7 @@ func TestLoadWorkerDefaults(t *testing.T) {
 	assert.Equal(t, 2*time.Second, w.HeartbeatInterval)
 	assert.Equal(t, 6*time.Second, w.HeartbeatTTL)
 	assert.Equal(t, 60*time.Second, w.DoctorInterval)
+	assert.Equal(t, 50*time.Minute, w.NotionUploadReuseWindow)
 	assert.Equal(t, 0.0, w.Faults.LLM429Rate)
 	assert.False(t, w.Faults.FrameFailAll)
 }

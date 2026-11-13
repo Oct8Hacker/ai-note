@@ -95,6 +95,9 @@ type Worker struct {
 
 	NotionDefaultParentID string `env:"NOTION_DEFAULT_PARENT_ID"`
 	NotionMaxImageBytes   int    `env:"NOTION_MAX_IMAGE_BYTES" envDefault:"4500000"`
+	// NotionUploadReuseWindow is how long a frame's Notion file upload is
+	// reused on a rerun; Notion expires unattached uploads after ~1 h (FR-IDEM-5).
+	NotionUploadReuseWindow time.Duration `env:"NOTION_UPLOAD_REUSE_WINDOW" envDefault:"50m"`
 
 	MaxAttempts         int `env:"MAX_ATTEMPTS" envDefault:"5"`
 	MaxRateLimitRetries int `env:"MAX_RATE_LIMIT_RETRIES" envDefault:"8"`

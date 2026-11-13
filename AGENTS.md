@@ -67,7 +67,7 @@ Z1–Z4 (integration, demo, release) are done together after Track B is merged.
 | The user's Notion token | `deps.NotionToken`: decrypted, and **non-empty only in the PUBLISHING stage** | `internal/worker/runtime.go` |
 | Health and doctor output | `health.Checker.Doctor` field (currently nil; B11 sets it) | `internal/health/checker.go` |
 
-The worker currently runs **fake stages** (`fakeStages()` in `cmd/worker/main.go`). Task Z1, not a B task, replaces them with the real ones. Track B stages are tested only with fakes until then.
+Since Z1 the worker runs the **real stages**, built by `realStages()` in `cmd/worker/stages.go`. Stage unit tests still use fakes; `scripts/demo/happy.sh <url>` runs one real video end to end.
 
 ## Shared files (Track A owns them — touch only when your task says so)
 

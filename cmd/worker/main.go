@@ -25,8 +25,7 @@ import (
 	"ainote/internal/jobs"
 	"ainote/internal/llm"
 	"ainote/internal/logging"
-	"ainote/internal/pipeline"
-	"ainote/internal/pipeline/pipelinetest"
+	"ainote/internal/notion"
 	"ainote/internal/queue"
 	"ainote/internal/ratelimit"
 	"ainote/internal/worker"
@@ -71,12 +70,13 @@ func run() error {
 	buckets, notionTmpl, daily := ratelimit.FromWorkerConfig(cfg)
 	limiter := ratelimit.New(rdb, buckets, notionTmpl, daily, cfg.LimiterMaxWait, time.Now)
 	controls := faults.New(rdb, cfg.Faults, rand.Float64)
-	text, vision, err := llm.FromConfig(cfg, limiter, controls, func(ctx context.Context) { ratelimit.Incr429(ctx, rdb) })
-	if err != nil {
+	text, vision, llmErr := llm.FromConfig(cfg, limiter, controls, func(ctx context.Context) { ratelimit.Incr429(ctx, rdb) })
+	if llmErr != nil {
 		log.Warn("doctor could not initialize model clients")
 	}
 	runner := youtube.ExecRunner{}
-	checks := doctor.Checks{Text: text, Vision: vision, Runner: runner, YT: youtube.NewClient(runner, limiter, controls, cfg.YtDlpCookiesFile)}
+	yt := youtube.NewClient(runner, limiter, controls, cfg.YtDlpCookiesFile)
+	checks := doctor.Checks{Text: text, Vision: vision, Runner: runner, YT: yt}
 	if len(os.Args) == 2 && os.Args[1] == "doctor" {
 		results := runDoctor(ctx, checks)
 		// OAuth is optional because users can paste an integration token.
@@ -97,6 +97,13 @@ func run() error {
 		}
 		return nil
 	}
+	// Doctor mode reports a broken LLM setup; a real worker cannot run without one.
+	if llmErr != nil {
+		return fmt.Errorf("llm clients: %w", llmErr)
+	}
+	stages := realStages(cfg, yt, runner, text, vision,
+		notion.New("", cfg.NotionVersion, limiter, controls, nil))
+
 	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return fmt.Errorf("postgres: %w", err)
@@ -166,9 +173,7 @@ func run() error {
 		DeliveryLimit:       cfg.DeliveryLimit,
 		RetryDelays:         cfg.RetryDelays,
 		DeferDelay:          cfg.DeferDelay,
-	}, repo, queue.NewPublisher(mq, top), rdb, sealer, fakeStages(),
-		// Fake stages stay until Z1 replaces them.
-		limiter, controls, log)
+	}, repo, queue.NewPublisher(mq, top), rdb, sealer, stages, limiter, controls, log)
 
 	log.Info("worker started", "worker_id", workerID)
 	err = rt.Run(ctx, mq)
@@ -180,26 +185,4 @@ func runDoctor(ctx context.Context, checks doctor.Checks) []doctor.Result {
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 	return doctor.Run(ctx, checks)
-}
-
-// fakeStages returns stand-in stages that each just sleep for a second, so the
-// whole path (gateway, broker, worker, Postgres) can be exercised end to end
-// before the real stages exist.
-func fakeStages() map[pipeline.Status]pipeline.Stage {
-	sleep := func(ctx context.Context) error {
-		select {
-		case <-time.After(time.Second):
-			return nil
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	}
-	m := map[pipeline.Status]pipeline.Stage{}
-	for _, st := range []pipeline.Status{
-		pipeline.StatusTranscribing, pipeline.StatusSummarizing,
-		pipeline.StatusExtractingFrames, pipeline.StatusPublishing,
-	} {
-		m[st] = &pipelinetest.FakeStage{Status: st, Hook: sleep}
-	}
-	return m
 }
