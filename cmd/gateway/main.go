@@ -19,6 +19,7 @@ import (
 	"ainote/internal/config"
 	"ainote/internal/crypto"
 	"ainote/internal/dlqwatch"
+	"ainote/internal/doctor"
 	"ainote/internal/faults"
 	"ainote/internal/health"
 	"ainote/internal/jobs"
@@ -88,6 +89,17 @@ func run() error {
 	}()
 
 	checker := &health.Checker{
+		Doctor: func(ctx context.Context) (map[string]any, error) {
+			workers, err := doctor.ReadAll(ctx, rdb)
+			if err != nil {
+				return nil, err
+			}
+			report := map[string]any{"notion_oauth_configured": cfg.NotionClientID != "" && cfg.NotionClientSecret != "" && cfg.NotionRedirectURI != ""}
+			for id, results := range workers {
+				report[id] = results
+			}
+			return report, nil
+		},
 		Version:      version,
 		WorkersAlive: func(ctx context.Context) (int, error) { return worker.CountAlive(ctx, rdb) },
 		Provider429:  func(ctx context.Context) (int64, error) { return ratelimit.Get429(ctx, rdb) },

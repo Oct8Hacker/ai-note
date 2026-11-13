@@ -122,7 +122,10 @@ func TestDailyCap(t *testing.T) {
 	rdb := newRedis(t)
 	la, err := time.LoadLocation("America/Los_Angeles")
 	require.NoError(t, err)
-	now := time.Date(2026, 11, 10, 22, 0, 0, 0, la)
+	// Redis expires keys against its real clock. Start tomorrow at 22:00
+	// so the simulated midnight reset stays in the future throughout the test.
+	year, month, day := time.Now().In(la).AddDate(0, 0, 1).Date()
+	now := time.Date(year, month, day, 22, 0, 0, 0, la)
 	l := New(rdb, nil, BucketSpec{}, map[string]DailySpec{"llm:daily": {Limit: 3, Loc: la}},
 		time.Second, func() time.Time { return now })
 	ctx := context.Background()
