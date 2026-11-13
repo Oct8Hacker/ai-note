@@ -23,6 +23,7 @@ import (
 	"ainote/internal/health"
 	"ainote/internal/jobs"
 	"ainote/internal/logging"
+	"ainote/internal/notion"
 	"ainote/internal/outbox"
 	"ainote/internal/queue"
 	"ainote/internal/ratelimit"
@@ -104,7 +105,8 @@ func run() error {
 	// other buckets are worker-only. Wait is bounded like the worker default.
 	notionLimiter := ratelimit.New(rdb, nil, ratelimit.BucketSpec{Capacity: 3, RefillPerSec: cfg.NotionRPS},
 		nil, 60*time.Second, time.Now)
-	_ = notionLimiter // consumed by Task B10
+	// The gateway reads fault overrides from Redis.
+	faultControls := faults.New(rdb, config.FaultDefaults{}, rand.Float64)
 
 	sealer, err := crypto.NewSealer(cfg.TokenEncKey)
 	if err != nil {
@@ -148,8 +150,8 @@ func run() error {
 		Outbox: relay,
 		Health: checker,
 		Admin:  repo,
-		// Zero env defaults: the gateway only reads/writes the Redis overrides.
-		Faults: faults.New(rdb, config.FaultDefaults{}, rand.Float64),
+		Faults: faultControls,
+		Notion: notion.New("", cfg.NotionVersion, notionLimiter, faultControls, nil),
 	})
 	srv := &http.Server{
 		Addr:              ":" + strconv.Itoa(cfg.Port),
