@@ -3,12 +3,14 @@ import type { TrackedJob } from "./types";
 export interface Settings {
   gatewayUrl: string;
   notionToken: string | null;
+  notionConnectionId?: string | null;
   notionParentId: string | null;
   workspaceName: string | null;
 }
 const defaults: Settings = {
   gatewayUrl: "http://localhost:8080",
   notionToken: null,
+  notionConnectionId: null,
   notionParentId: null,
   workspaceName: null,
 };
