@@ -47,6 +47,7 @@ export async function takeNotes(
       last: null,
       results: null,
       submittedAt: Date.now(),
+      gatewayUrl: settings.gatewayUrl,
       notionConnectionId: settings.notionConnectionId,
     });
     // A cosmetic badge failure must not turn an accepted submission into a retry.
