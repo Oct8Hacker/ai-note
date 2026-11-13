@@ -92,7 +92,7 @@ git switch build/v1
 go test ./...                        # unit tests
 go test -tags=integration -p 1 ./... # integration tests (Docker must be running)
 bash scripts/lint.sh                 # lint exactly as CI runs it
-cp .env.example .env                 # fill in values locally; never commit .env
+scripts/setup.sh                     # creates .env and generates its secrets; never commit .env
 docker compose -f deploy/docker-compose.yml --env-file .env up -d --build
 curl localhost:8080/healthz
 ```
