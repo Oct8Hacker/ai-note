@@ -37,6 +37,36 @@ func TestGeminiJSONMode(t *testing.T) {
 	require.Equal(t, "{}", out.Text)
 }
 
+// Gemini Flash models think before answering, thinking cannot be turned off
+// on gemini-3.8-flash, and thought tokens count against maxOutputTokens. The
+// caller's budget is for the visible JSON, so the provider adds headroom.
+func TestGeminiReservesThinkingHeadroom(t *testing.T) {
+	var got []int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var b struct {
+			GenerationConfig struct {
+				MaxOutputTokens int
+			}
+		}
+		if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+			t.Errorf("decode request: %v", err)
+		}
+		got = append(got, b.GenerationConfig.MaxOutputTokens)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"candidates":[{"content":{"parts":[{"text":"{}"}]}}]}`)
+	}))
+	defer srv.Close()
+	p, err := newGemini("test-key", "test-model", time.Second, srv.URL)
+	require.NoError(t, err)
+
+	_, err = p.GenerateJSON(context.Background(), JSONRequest{Prompt: "notes", MaxOutputTokens: 2048})
+	require.NoError(t, err)
+	_, err = p.GenerateJSON(context.Background(), JSONRequest{Prompt: "no cap"})
+	require.NoError(t, err)
+
+	require.Equal(t, []int{2048 + geminiThinkingHeadroom, 0}, got, "visible budget + headroom; no cap stays uncapped")
+}
+
 func TestGeminiRetryInfo(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusTooManyRequests)

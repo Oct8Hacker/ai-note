@@ -9,6 +9,13 @@ import (
 	"google.golang.org/genai"
 )
 
+// geminiThinkingHeadroom is added to a request's MaxOutputTokens. Gemini Flash
+// models think before answering (on gemini-3.8-flash it cannot be turned off),
+// and thought tokens count against maxOutputTokens; without headroom the JSON
+// is cut off and synthesis fails with LLM_BAD_OUTPUT. SDK v1.20.0 has no
+// thinking-level setting, so a larger cap is the available lever.
+const geminiThinkingHeadroom = 8192
+
 type gemini struct {
 	client *genai.Client
 	model  string
@@ -32,10 +39,14 @@ func (p *gemini) Ping(ctx context.Context) error {
 	return providerError(ctx, err)
 }
 func (p *gemini) GenerateJSON(ctx context.Context, r JSONRequest) (JSONResponse, error) {
-	if r.MaxOutputTokens < 0 || r.MaxOutputTokens > math.MaxInt32 {
+	if r.MaxOutputTokens < 0 || r.MaxOutputTokens > math.MaxInt32-geminiThinkingHeadroom {
 		return JSONResponse{}, fmt.Errorf("invalid max output tokens: %d", r.MaxOutputTokens)
 	}
-	cfg := &genai.GenerateContentConfig{ResponseMIMEType: "application/json", ResponseJsonSchema: r.Schema, MaxOutputTokens: int32(r.MaxOutputTokens)}
+	maxOut := int32(r.MaxOutputTokens) // bounded by the check above
+	if maxOut > 0 {                    // 0 means no cap; leave it uncapped
+		maxOut += geminiThinkingHeadroom
+	}
+	cfg := &genai.GenerateContentConfig{ResponseMIMEType: "application/json", ResponseJsonSchema: r.Schema, MaxOutputTokens: maxOut}
 	if r.System != "" {
 		cfg.SystemInstruction = &genai.Content{Parts: []*genai.Part{{Text: r.System}}}
 	}

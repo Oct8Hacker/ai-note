@@ -26,6 +26,12 @@ type NotionAPI interface {
 
 var _ NotionAPI = (*notion.Client)(nil)
 
+// notFoundOrBadRequest reports a lookup that failed because the ID is not an
+// object of the requested type (404) or was rejected for that endpoint (400).
+func notFoundOrBadRequest(err error) bool {
+	return errors.Is(err, notion.ErrObjectNotFound) || pipeline.ErrorCode(err) == "NOTION_BAD_REQUEST"
+}
+
 // ResolveParent prefers the requested destination, then the configured one,
 // and finally the oldest shared page with the exact template title.
 func ResolveParent(ctx context.Context, n NotionAPI, token, requested, envDefault string) (resolved, kind, titleProp string, err error) {
@@ -53,11 +59,13 @@ func ResolveParent(ctx context.Context, n NotionAPI, token, requested, envDefaul
 	if err == nil {
 		return id, "page", "title", nil
 	}
-	if !errors.Is(err, notion.ErrObjectNotFound) {
+	// Notion answers a database ID on /pages with 400 validation_error ("is a
+	// database, not a page"), so a 400 also means "try it as a database".
+	if !notFoundOrBadRequest(err) {
 		return "", "", "", err
 	}
 	sources, err := n.RetrieveDatabase(ctx, token, id)
-	if errors.Is(err, notion.ErrObjectNotFound) || (err == nil && len(sources) == 0) {
+	if notFoundOrBadRequest(err) || (err == nil && len(sources) == 0) {
 		return "", "", "", &pipeline.FatalError{Code: "NOTION_PARENT_NOT_FOUND"}
 	}
 	if err != nil {

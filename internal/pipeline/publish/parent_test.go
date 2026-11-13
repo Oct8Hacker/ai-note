@@ -39,6 +39,44 @@ func (f *fakeNotion) RetrieveDatabase(context.Context, string, string) ([]string
 func (*fakeNotion) TitlePropertyName(context.Context, string, string) (string, error) {
 	return "Lecture", nil
 }
+
+// badRequestNotion answers like the real API (#38): GET /pages with a database
+// ID is 400 validation_error ("is a database, not a page"), not 404.
+type badRequestNotion struct{ NotionAPI }
+
+func (badRequestNotion) RetrievePage(_ context.Context, _ string, id string) (notion.Page, error) {
+	if id == "busy" {
+		return notion.Page{}, &pipeline.RateLimitedError{Provider: "notion", RetryAfter: time.Second}
+	}
+	return notion.Page{}, &pipeline.RetryableError{Code: "NOTION_BAD_REQUEST"}
+}
+func (badRequestNotion) RetrieveDatabase(_ context.Context, _ string, id string) ([]string, error) {
+	if id == "db" {
+		return []string{"src"}, nil
+	}
+	return nil, &pipeline.RetryableError{Code: "NOTION_BAD_REQUEST"}
+}
+func (badRequestNotion) TitlePropertyName(context.Context, string, string) (string, error) {
+	return "Name", nil
+}
+
+func TestResolveDatabaseAfterPageBadRequest(t *testing.T) {
+	ctx := context.Background()
+	f := badRequestNotion{}
+
+	id, kind, prop, err := ResolveParent(ctx, f, "token", "db", "")
+	require.NoError(t, err, "a database destination must resolve when /pages answers 400")
+	require.Equal(t, []string{"src", "data_source", "Name"}, []string{id, kind, prop})
+
+	_, _, _, err = ResolveParent(ctx, f, "token", "block", "")
+	require.Equal(t, "NOTION_PARENT_NOT_FOUND", pipeline.ErrorCode(err), "neither a page nor a database: fail, don't retry forever")
+	require.Equal(t, pipeline.ClassFatal, pipeline.Classify(err))
+
+	_, _, _, err = ResolveParent(ctx, f, "token", "busy", "")
+	var rate *pipeline.RateLimitedError
+	require.ErrorAs(t, err, &rate, "other page-lookup errors pass through unchanged")
+}
+
 func TestResolveDestinations(t *testing.T) {
 	ctx := context.Background()
 	f := &fakeNotion{db: true, results: []notion.SearchResult{{ID: "wrong", Type: "page", Title: "Other"}, {ID: "new", Type: "page", Title: DefaultParentTitle, CreatedTime: time.Unix(100, 0)}, {ID: "old", Type: "page", Title: DefaultParentTitle, CreatedTime: time.Unix(50, 0)}}}
