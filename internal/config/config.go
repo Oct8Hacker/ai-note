@@ -229,7 +229,7 @@ func (g Gateway) validate() error {
 // providerDefaultModel lists providers with a built-in model default;
 // openrouter and claude require LLM_MODEL explicitly.
 var providerDefaultModel = map[string]string{
-	"gemini": "gemini-2.5-flash",
+	"gemini": "gemini-3.8-flash", // 2.5 models are limited to past users (Gemini API deprecations page)
 	"ollama": "llama3.2",
 	"groq":   "llama-3.3-70b-versatile",
 }

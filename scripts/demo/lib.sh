@@ -27,7 +27,9 @@ env_value() {
 ADMIN_TOKEN="${ADMIN_TOKEN:-$(env_value ADMIN_TOKEN)}"
 
 pass() { echo "PASS $SCRIPT: $*"; exit 0; }
-fail() { echo "FAIL $SCRIPT: $*"; exit 1; }
+# fail writes to stderr so the line still shows when it is called inside $(...),
+# e.g. from submit or wait_terminal.
+fail() { echo "FAIL $SCRIPT: $*" >&2; exit 1; }
 elapsed() { echo $(( $(date +%s) - $1 )); }
 
 compose() {

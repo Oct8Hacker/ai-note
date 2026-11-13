@@ -5,10 +5,10 @@ This is a two-person final-year project, due **20 Nov 2026**. The humans must be
 | | Person A — Platform & Reliability | Person B — Pipeline & Client |
 |---|---|---|
 | Who | Aryan ([@Oct8Hacker](https://github.com/Oct8Hacker)), uses Claude Code | Om ([@OmAghera](https://github.com/OmAghera)), uses Codex |
-| Tasks | A1–A12: **all done and merged** | B1–B16: **Om's — not started** |
+| Tasks | A1–A12: **all done and merged** | B1–B16: **all done and merged** (Om, PRs #29–#37, #39–#45) |
 | Packages | `internal/{config,api,jobs,queue,outbox,worker,dlqwatch,ratelimit,faults,health,crypto}`, `cmd/`, `deploy/`, `migrations/` | `internal/youtube`, `internal/llm`, `internal/notion`, `internal/pipeline/{transcript,synthesis,frames,publish}`, `internal/doctor`, `extension/` |
 
-Z1–Z4 (integration, demo, release) are done together after Track B is merged.
+Z1–Z4 (integration, demo, release) are joint and in progress: code and docs are on `build/v1`; the live runs and the clean-machine rehearsal remain (see `docs/acceptance.md`). Bug fixes found during Z go in the owning package with a regression test.
 
 **Read first:** `docs/SRS.md` (what we build; requirement IDs FR-…, IR-…), `docs/tasks/README.md` (task list and GitHub issue numbers), then the task file `docs/tasks/<ID>.md`.
 
