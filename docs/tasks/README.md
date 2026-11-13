@@ -29,13 +29,13 @@ Every open task is a GitHub issue (A6–A12 = #1–#7, B1–B16 = #8–#23, Z1�
 | [B7](B7.md) | Notion API client | B | 12 Nov | ✅ done |
 | [B8](B8.md) | Notion page content builder | B | 13 Nov | ✅ done |
 | [B9](B9.md) | Publish stage (parent resolution, idempotent page) | B | 13 Nov (basic by 12 Nov) | ✅ done |
-| [B10](B10.md) | Gateway Notion endpoints | B | 13 Nov | ⏳ pending |
-| [B11](B11.md) | Preflight doctor | B | 16 Nov | ⏳ pending |
-| [B12](B12.md) | Extension scaffold, shared client, message mapping | B | 13 Nov | ⏳ pending |
-| [B13](B13.md) | Content script — Take Notes button | B | Take Notes button [B] — 13 Nov | ⏳ pending |
-| [B14](B14.md) | Background service worker | B | 13–14 Nov | ⏳ pending |
-| [B15](B15.md) | Popup UI | B | 14 Nov (polish 17 Nov) | ⏳ pending |
-| [B16](B16.md) | Groq/OpenRouter backup wiring | B | 16 Nov (SHOULD) | ⏳ pending |
+| [B10](B10.md) | Gateway Notion endpoints | B | 13 Nov | ✅ done |
+| [B11](B11.md) | Preflight doctor | B | 16 Nov | ✅ done |
+| [B12](B12.md) | Extension scaffold, shared client, message mapping | B | 13 Nov | ✅ done |
+| [B13](B13.md) | Content script — Take Notes button | B | Take Notes button [B] — 13 Nov | ✅ done |
+| [B14](B14.md) | Background service worker | B | 13–14 Nov | ✅ done |
+| [B15](B15.md) | Popup UI | B | 14 Nov (polish 17 Nov) | ✅ done |
+| [B16](B16.md) | Groq/OpenRouter backup wiring | B | 16 Nov (SHOULD) | ✅ done |
 | [Z1](Z1.md) | Wire real stages; happy path end-to-end | A+B | 12 Nov (milestone), extension path 14 Nov | ⏳ pending |
 | [Z2](Z2.md) | Demo scripts and runbook | A+B | 16 Nov | ⏳ pending |
 | [Z3](Z3.md) | Setup tooling, README, release | A+B | 18 Nov | ⏳ pending |
