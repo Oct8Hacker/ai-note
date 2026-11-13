@@ -3,7 +3,7 @@
 Every source-spec requirement from [SRS Appendix A](SRS.md#appendix-a--requirements-traceability-matrix), with what proves it. Any row that ends ❌ blocks the release.
 
 **Status key**
-- ✅ **test**: proven by an automated test that runs in CI.
+- ✅ **test**: proven by an automated test that runs in CI. ✅ **live**: a live check has passed (see Evidence).
 - 🔶 **live**: needs the running stack. Proven by the named demo script or check during the Z1 live run, the Z2 double run or the Z4 rehearsal. Write the date and result in the Evidence column.
 - 📄 **doc**: proven by documentation; checked in the clean-machine rehearsal.
 
@@ -18,7 +18,7 @@ Go tests are `package.TestName`; extension tests are `file › test`.
 | 5 | Four separate containers; kill or scale one without touching others | `deploy/docker-compose.yml`; `scale.sh 3`, `kill-worker.sh` | 🔶 live | |
 | 6 | Gateway accepts jobs and reports status, does no pipeline work | `api.TestPostJobNoExternalCalls`, `TestPostJobAccepted` | ✅ test | |
 | 7 | Durable queue, at-least-once, redelivery on crash | `queue.TestUnackedRedeliveredOnConnClose`, `TestReconnectAfterForcedClose`, `TestDeclareTwice`; `worker.TestCrashRecovery` | ✅ test | |
-| 8 | ≥ 2 independent workers | Compose `deploy.replicas: 2`; `health.sh` (`workers_alive ≥ 2`) | 🔶 live | |
+| 8 | ≥ 2 independent workers | Compose `deploy.replicas: 2`; `health.sh` (`workers_alive ≥ 2`) | ✅ live | 2026-11-13: `health.sh` PASS, `workers_alive=2` |
 | 9 | Take Notes button injected on watch pages | `button.test.ts › ensureButton is idempotent and requires a toolbar` | ✅ test | |
 | 10 | Click captures the current video ID → background | `button.test.ts › reads the current ID at click time …` | ✅ test | |
 | 11 | Keeps working across video-to-video navigation | `button.test.ts › reattaches once when a toolbar or the entire player is replaced`, `› ignores a late acknowledgment after navigating …` | ✅ test | |
@@ -55,7 +55,7 @@ Go tests are `package.TestName`; extension tests are `file › test`.
 | 42 | Every image is a real frame at the identified time; never generated or substituted | `frames.TestCaptureRealFrame`, `TestDriftNeverExceeded`; `publish.TestTextOnlyAndFrameGuards` | ✅ test | |
 | 43 | Every frame paired with an LLM caption | `publish.TestBlocksOrderAndCaptions`, `TestTextOnlyAndFrameGuards`; `frames.TestVerifyBatches` | ✅ test | |
 | 44 | Unpacked extension, one documented build command | CI `extension` job (`npm ci && npm run build`); README §3; release zip | ✅ test + 📄 doc | |
-| 45 | One compose file; `--scale worker=N`; stop/start containers | `scale.sh N`; `kill-worker.sh` | 🔶 live | |
+| 45 | One compose file; `--scale worker=N`; stop/start containers | `scale.sh N`; `kill-worker.sh` | 🔶 live | 2026-11-13: `scale.sh 3` and `scale.sh 2` PASS; `kill-worker.sh` pending |
 | 46 | README: base URL, default destination, every env var | README §2, §4, §5 | 📄 doc | |
 | 47 | Grader can run the whole stack from the README alone | Z4 steps 1–2 (≤ 15 min, Quick and Full OAuth modes) | 🔶 live | |
 | 48 | Health check of gateway, broker and state store | `health.TestCheckAllOK`, `TestCheckOneDown`; `api.TestHandler200`, `TestHandler503`; live: `health.sh` | ✅ test + 🔶 live | |
