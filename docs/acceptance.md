@@ -69,5 +69,5 @@ Go tests are `package.TestName`; extension tests are `file › test`.
 ## Open items to close before tagging v1.0.0
 
 - [ ] All 🔶 rows have a dated PASS in the Evidence column (Z1 live run, Z2 double run, Z4 rehearsal).
-- [ ] #38 item 1: publish once to a Notion **database** destination.
+- [x] #38 item 1: publish once to a Notion **database** destination. 2026-11-16: from the extension, video #1 into an inline database → `COMPLETED`, 100 s, 8/8 frames, title column `Name` found. The run first exposed a parsing bug (a data source's `"title": {}` schema broke search and `TitlePropertyName`), fixed in `internal/notion` with realistic test fixtures.
 - [ ] Clean-machine rehearsal ≤ 15 min in Quick mode and in Full OAuth mode (Z4 steps 1–2), by the teammate who did not write the README.

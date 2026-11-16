@@ -22,4 +22,6 @@ Run with `NOTION_TEST_TOKEN=… scripts/demo/happy.sh <url>`. The script prints 
 | 2026-11-16 | 3 (Command Line) | page (AI Video Notes) | gemini / gemini-3.5-flash-lite | `COMPLETED` | 11 | 0 / 0 | flash-lite flagged no visual moments; yt-dlp 2025.10.22 at the time. |
 | 2026-11-16 | 3 (Command Line), **from the extension** | page (AI Video Notes) | gemini / gemini-3-flash-preview | `COMPLETED` | 110 | 8 / 8 | No warnings, no retries. Stages: transcript 8 s, summary 15 s, frames 74 s, publish 12 s. Over the 90 s target, inside the 3 min bound; frame capture from the 18-min stream dominates. |
 | 2026-11-16 | lec22 Equivalence Relations (16:40, extra), from the extension | page (AI Video Notes) | gemini / gemini-3-flash-preview | `COMPLETED_WITH_WARNINGS` | 111 | 8 / 8 | `FRAME_VERIFY_SKIPPED`: the verification call failed, so frames kept their original captions (FR-PIPE-24). |
+| 2026-11-16 | 1 (Bubble Sort), from the extension | page (AI Video Notes) | gemini / gemini-3-flash-preview | `COMPLETED` | 228 | 7 / 7 | Gemini answered HTTP 404 after ~2 min; retried once as `LLM_UNAVAILABLE` and succeeded (c1d3be0). |
+| 2026-11-16 | 1 (Bubble Sort), from the extension | **database** (Lecture Notes DB) | gemini / gemini-3-flash-preview | `COMPLETED` | 100 | 8 / 8 | No warnings. Row added to the database; title column `Name`. |
 | | | | | | | | |
