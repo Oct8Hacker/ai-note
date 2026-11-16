@@ -60,7 +60,7 @@ Go tests are `package.TestName`; extension tests are `file › test`.
 | 47 | Grader can run the whole stack from the README alone | Z4 steps 1–2 (≤ 15 min, Quick and Full OAuth modes) | 🔶 live | |
 | 48 | Health check of gateway, broker and state store | `health.TestCheckAllOK`, `TestCheckOneDown`; `api.TestHandler200`, `TestHandler503`; live: `health.sh` | ✅ test + 🔶 live | |
 | 49 | Client experience | Extension tests above; Z4 rehearsal | 🔶 live | |
-| 50 | End-to-end latency near the 20-min cap | `happy.sh` on video #3, time recorded in `docs/test-videos.md` (target ≤ 90 s) | 🔶 live | 2026-11-16: 80 s end to end on video #1 (5:55); still to time video #3 (17:52) with frames |
+| 50 | End-to-end latency near the 20-min cap | `happy.sh` on video #3, time recorded in `docs/test-videos.md` (target ≤ 90 s) | ✅ live | 2026-11-16: video #3 (17:52) `COMPLETED` in 110 s, 8/8 frames, no warnings (extension); video #1 (5:55) in 80 s. Over the 90 s SHOULD target, inside NFR-PERF-2's 3 min bound; frame capture is ~70 % of the time |
 | 51 | Burst drains without LLM 429s; each click an independent job | `jobs.TestCreateJobIdempotencyKey`, `TestTwoJobsSameVideo`; `worker.TestTwoJobsSameVideoIndependent`; `jobs.test.ts › … fresh idempotency key per click`; live: `burst.sh` | ✅ test + 🔶 live | |
 | 52 | Recovery time and correctness after a worker kill | `worker.TestCrashRecovery`; live: `kill-worker.sh` (≤ 15 s, one page) | ✅ test + 🔶 live | |
 | 53 | Constraints A and B hold on held-out videos (LLM-as-judge) | Rows 41–43; live: inspect pages for videos #1–#3 | 🔶 live | |
