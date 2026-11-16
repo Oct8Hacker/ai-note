@@ -1,7 +1,9 @@
 package notion
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -20,8 +22,21 @@ type richText struct {
 type property struct {
 	Type  string
 	Name  string
-	Title []richText
+	Title titleValue
 }
+
+// titleValue is a title property's value. On a page it is rich text (a JSON
+// array); in a data source's schema it is a config object ({}) with no text.
+type titleValue []richText
+
+func (v *titleValue) UnmarshalJSON(b []byte) error {
+	if !bytes.HasPrefix(bytes.TrimSpace(b), []byte("[")) {
+		*v = nil
+		return nil
+	}
+	return json.Unmarshal(b, (*[]richText)(v))
+}
+
 type object struct {
 	ID, URL, Object string
 	CreatedTime     time.Time `json:"created_time"`
@@ -40,7 +55,7 @@ func (o object) page() Page {
 	if len(parts) == 0 {
 		for _, p := range o.Properties {
 			if p.Type == "title" {
-				parts = p.Title
+				parts = []richText(p.Title)
 				break
 			}
 		}

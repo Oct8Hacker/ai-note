@@ -40,7 +40,8 @@ func TestDatabasePublishOperations(t *testing.T) {
 		case "GET /databases/db":
 			_, _ = io.WriteString(w, `{"data_sources":[{"id":"ds"}]}`)
 		case "GET /data_sources/ds":
-			_, _ = io.WriteString(w, `{"properties":{"Lecture name":{"type":"title"}}}`)
+			// A data source's properties are a schema: "title" is a config object, not rich text.
+			_, _ = io.WriteString(w, `{"object":"data_source","id":"ds","title":[{"plain_text":"Lectures"}],"properties":{"Lecture name":{"id":"title","name":"Lecture name","type":"title","title":{}},"Tags":{"id":"t1","name":"Tags","type":"multi_select","multi_select":{"options":[]}}}}`)
 		case "POST /pages":
 			var b struct {
 				Parent     map[string]string
@@ -216,13 +217,14 @@ func TestExchangeCodeBasicAuth(t *testing.T) {
 }
 func TestSearchDestinations(t *testing.T) {
 	c, _ := server(t, func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = io.WriteString(w, `{"results":[{"object":"page","id":"p","properties":{"Name":{"type":"title","title":[{"plain_text":"A"},{"plain_text":" B"}]}}},{"object":"data_source","id":"source","parent":{"type":"database_id","database_id":"database"},"title":[{"plain_text":"Notes"}],"icon":{"type":"emoji","emoji":"📓"}}]}`)
+		_, _ = io.WriteString(w, `{"results":[{"object":"page","id":"p","properties":{"Name":{"type":"title","title":[{"plain_text":"A"},{"plain_text":" B"}]}}},{"object":"data_source","id":"source","parent":{"type":"database_id","database_id":"database"},"title":[{"plain_text":"Notes"}],"icon":{"type":"emoji","emoji":"📓"},"properties":{"Name":{"id":"title","name":"Name","type":"title","title":{}}}}]}`)
 	})
 	got, err := c.Search(context.Background(), "t", "", "")
 	require.NoError(t, err)
 	require.Len(t, got, 2)
 	require.Equal(t, "A B", got[0].Title)
 	require.Equal(t, "database", got[1].ID)
+	require.Equal(t, "Notes", got[1].Title)
 	require.Equal(t, "database", got[1].Type)
 	require.Equal(t, "📓", got[1].Icon)
 }
