@@ -48,7 +48,7 @@ Clone to first Notion page should take under 15 minutes.
    - build it yourself: `npm --prefix extension ci && npm --prefix extension run build` (output in `extension/dist/`).
 
    Then open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**, and pick the unzipped folder or `extension/dist`. The extension ID is always `lbmicegifohcileflpbjdanghkgigcia` (pinned by the manifest key; `scripts/extension-id.sh` prints it).
-4. **Connect Notion** with Quick mode ([§6](#6-connecting-notion), 2 minutes): create an internal integration, share a page called **AI Video Notes** with it, and paste the token into the popup's **Integration token** field.
+4. **Connect Notion** with Quick mode ([§6](#6-connecting-notion), 2 minutes): create an internal connection (Notion's Developer connections), give it access to a page called **AI Video Notes**, and paste the token into the popup's **Integration token** field.
 5. **Take notes.** Open a YouTube video of at most 20 minutes with captions, click **Take Notes** under the player, and follow the progress in the popup. When it finishes, click **View in Notion**.
 
 ## 4. Default Notion destination
@@ -128,15 +128,24 @@ Both modes run the same pipeline. **Full OAuth** is the one-time OAuth flow from
 
 ### Mode A — Quick (recommended for graders)
 
-1. Go to [notion.so/profile/integrations](https://www.notion.so/profile/integrations) and create a new **Internal** integration in your workspace. Its capabilities must include **Read content**, **Update content** and **Insert content**. Copy its token.
-2. Create a page titled exactly **AI Video Notes**. Open its **•••** menu → **Connections** → add your integration.
-3. Open the extension popup, paste the token into **Integration token**, and click **Connect with token**.
+Notion calls these **connections** (older docs and screens say "integrations").
 
-No `NOTION_CLIENT_*` variables are needed.
+1. Open [notion.so/profile/integrations](https://www.notion.so/profile/integrations). Notion shows it as **Developer tools → Developer connections**. Click **+ New connection**:
+   - **Name:** anything, for example `AI Note`. **Installable in:** your workspace.
+   - **Auth type:** the internal / token option, **not OAuth**.
+   - Save. On the connection's page, make sure **Read content**, **Update content** and **Insert content** are on, and copy its secret. It starts with `ntn_`.
+2. Create a page titled exactly **AI Video Notes**, and give the connection access to it in either of these ways:
+   - Open the page, click the **•••** at the **top-right of the page** (not the right-click menu in the sidebar), choose **Connections** at the bottom (may be labelled **Connect to**), and pick your connection; or
+   - On the connection's page, open its **Access** tab, click **Edit access**, and tick the page.
+
+   Check: the page's top-right **•••** → **Connections** now lists your connection. Without this step every job fails with `NOTION_NO_DESTINATION`.
+3. Open the extension popup, paste the secret into **Integration token**, and click **Connect with token**.
+
+No `NOTION_CLIENT_*` variables are needed. `NOTION_DEFAULT_PARENT_ID` is optional: when it's empty, the page called "AI Video Notes" is found automatically.
 
 ### Mode B — Full OAuth
 
-1. At [notion.so/profile/integrations](https://www.notion.so/profile/integrations), create a **Public** integration:
+1. At [notion.so/profile/integrations](https://www.notion.so/profile/integrations) (**Developer connections → + New connection**), create a connection with the **OAuth (public)** auth type:
    - **Redirect URI:** `https://lbmicegifohcileflpbjdanghkgigcia.chromiumapp.org/notion` (the extension ID is pinned, so this is the same on every machine).
    - **Capabilities:** Read content, Update content, Insert content.
    - **Notion URL for optional template:** create a page titled **AI Video Notes**, publish it (**Share → Publish**), and paste its public URL. Notion then copies it into each user's workspace when they connect, and it becomes their default destination.
@@ -210,6 +219,8 @@ docker compose -f deploy/docker-compose.yml --env-file .env --env-file deploy/de
 export NOTION_TEST_TOKEN=ntn_…            # scripts that submit jobs read the token from here
 ```
 
+Or run a whole round in one go: `scripts/demo/run-all.sh --fresh` (wipes the stack, starts it with the demo profile, runs every script and prints a PASS/FAIL summary).
+
 | Script | Shows | Passes when |
 |---|---|---|
 | `health.sh` | Sanity check | All checks `ok`, `workers_alive ≥ 2` |
@@ -281,7 +292,7 @@ The gateway only accepts and reports jobs; it never runs pipeline work. Each wor
 
 **Notion OAuth fails with a redirect mismatch.** The public integration's redirect URI must be exactly `https://lbmicegifohcileflpbjdanghkgigcia.chromiumapp.org/notion` and match `NOTION_REDIRECT_URI`. Restart the gateway after changing `.env`.
 
-**`NOTION_NO_DESTINATION` or `NOTION_PARENT_NOT_FOUND`.** The page isn't shared with the integration. Open the page → **•••** → **Connections** → add the integration.
+**`NOTION_NO_DESTINATION` or `NOTION_PARENT_NOT_FOUND`.** The page isn't shared with the connection. Open the page → **•••** (top-right of the page) → **Connections** → add the integration.
 
 **The extension can't reach the gateway.** Check `curl localhost:8080/healthz`. If you changed the extension's gateway URL in the popup's settings, it must match. `CORS_ALLOWED_ORIGINS` must contain `chrome-extension://lbmicegifohcileflpbjdanghkgigcia`.
 

@@ -47,7 +47,13 @@ The live demo, in presentation order. Every script is in `scripts/demo/` and end
 
 ## Acceptance check (SRS §15.5 item 2)
 
-Run every script twice in a row on a fresh `down -v` / `up` with the demo profile, and record the result here.
+Run every script twice in a row on a fresh `down -v` / `up` with the demo profile, and record the result here. One command does a whole round: it asks for the Notion token (hidden), wipes and restarts the stack with the demo profile, runs every script in the order above, and prints a PASS/FAIL summary (full output in `tmp/demo-round-*.log`):
+
+```bash
+scripts/demo/run-all.sh --fresh
+```
+
+A round makes about 13 LLM jobs, so plan both rounds on a day with Gemini quota left.
 
 | Date | Run | health | happy | scale | burst | kill-worker | force-429 llm/notion/youtube | frames-fail | too-long | dlq |
 |---|---|---|---|---|---|---|---|---|---|---|
