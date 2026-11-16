@@ -73,7 +73,7 @@ Everything is configured through `.env`. [`.env.example`](.env.example) lists ev
 | **`GEMINI_API_KEY`** / `GROQ_API_KEY` / `OPENROUTER_API_KEY` | — **required for the chosen provider** | **LLM API key**. |
 | **`LLM_MODEL`** | `gemini-3.8-flash` for gemini | **LLM model name**. |
 | `LLM_VISION_PROVIDER` / `LLM_VISION_MODEL` | same as `LLM_PROVIDER` / `LLM_MODEL` | Model that checks each captured frame against its caption. |
-| `LLM_FALLBACK_PROVIDER` / `LLM_FALLBACK_MODEL` | empty | Backup used during an outage or when the quota runs out. |
+| `LLM_FALLBACK_PROVIDER` / `LLM_FALLBACK_MODEL` | empty | Backup used when the main provider is unavailable (two failed tries in one call). It is not used when the quota runs out. |
 | **`LLM_RPM`** | `8` | **Configured LLM rate limit**, requests per minute, shared by all workers. |
 | `LLM_TPM` | `200000` | LLM tokens per minute. |
 | `LLM_RPD` | `200` | LLM requests per day (`0` = off). |
@@ -120,7 +120,9 @@ Everything is configured through `.env`. [`.env.example`](.env.example) lists ev
 | `FAULT_*` | off | Fault injection; usually set live with `PUT /admin/faults`. |
 | `LOG_LEVEL` | `info` | Logging. |
 
-**Paid key or another provider.** The defaults fit a fresh Gemini free-tier key. With a paid key, raise `LLM_RPM`, `LLM_TPM` and `LLM_RPD` to about 80 % of your quota. To switch provider, set `LLM_PROVIDER`, its key and `LLM_MODEL`, then restart the workers (`docker compose -f deploy/docker-compose.yml --env-file .env up -d worker`).
+**Free-tier limits differ per model.** Check your model's limits in Google AI Studio (Rate limit page) and set `LLM_RPM` to its requests per minute. For example, `gemini-3-flash-preview` allows 5 requests/min and 20/day, so use `LLM_RPM=5`. A job makes two LLM calls (summary, then frame verification). To make the daily quota last twice as long, run verification on a model with a larger quota: `LLM_VISION_PROVIDER=gemini` and `LLM_VISION_MODEL=gemini-3.5-flash-lite` (500/day). `LLM_RPM` and `LLM_RPD` count the calls to both models together.
+
+**Paid key or another provider.** With a paid key, raise `LLM_RPM`, `LLM_TPM` and `LLM_RPD` to about 80 % of your quota. To switch provider, set `LLM_PROVIDER`, its key and `LLM_MODEL`, then restart the workers (`docker compose -f deploy/docker-compose.yml --env-file .env up -d worker`).
 
 ## 6. Connecting Notion
 
@@ -288,7 +290,7 @@ The gateway only accepts and reports jobs; it never runs pipeline work. Each wor
 2. Save it as `.ytdlp/cookies.txt` in the repo (the folder is git-ignored and mounted into the workers).
 3. Add `YTDLP_COOKIES_FILE=/ytdlp/cookies.txt` to `.env`, then restart the workers: `docker compose -f deploy/docker-compose.yml --env-file .env up -d worker`.
 
-**Jobs keep waiting on `llm`, or the quota runs out.** The free tier allows few requests per day. The job waits and resumes when tokens come back; it doesn't fail. To keep going, add a backup (`LLM_FALLBACK_PROVIDER=groq` with `GROQ_API_KEY`), or switch `LLM_PROVIDER`. If `scripts/doctor.sh` reports "LLM key rejected", the key or `LLM_MODEL` itself is wrong.
+**Jobs keep waiting on `llm`, or the quota runs out.** The free tier allows few requests per day (20 for some models). The job waits and resumes when tokens come back; it doesn't fail. To keep going, switch `LLM_MODEL` or `LLM_PROVIDER`, or use another key; the fallback provider only covers outages. See "Free-tier limits differ per model" in §5. If `scripts/doctor.sh` reports "LLM key rejected", the key or `LLM_MODEL` itself is wrong.
 
 **Notion OAuth fails with a redirect mismatch.** The public integration's redirect URI must be exactly `https://lbmicegifohcileflpbjdanghkgigcia.chromiumapp.org/notion` and match `NOTION_REDIRECT_URI`. Restart the gateway after changing `.env`.
 

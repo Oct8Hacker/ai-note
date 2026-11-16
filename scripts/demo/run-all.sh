@@ -9,7 +9,7 @@
 #
 # Asks for the Notion token (hidden) unless NOTION_TEST_TOKEN is already set.
 # Videos default to docs/test-videos.md; override with VIDEO_1..VIDEO_5.
-# One round makes about 13 LLM jobs (60-80 Gemini calls for two rounds).
+# One round makes about 13 LLM jobs, two calls each (summary + frame verification).
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"

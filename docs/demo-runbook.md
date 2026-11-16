@@ -16,7 +16,7 @@ The live demo, in presentation order. Every script is in `scripts/demo/` and end
    ```
 3. Open in the browser: the "AI Video Notes" page in Notion, the RabbitMQ UI at http://localhost:15672 (guest/guest), and a YouTube tab with video #1.
 4. Dry run: `scripts/demo/health.sh` must PASS.
-5. **LLM quota:** a full run uses roughly 15–20 jobs. Check you have Gemini daily quota left, or set the Groq backup (`LLM_FALLBACK_PROVIDER=groq`).
+5. **LLM quota:** a round makes about 13 LLM jobs, and each job makes two calls (summary and frame verification). With `gemini-3-flash-preview` on the free tier (5 requests/min, 20/day), set `LLM_RPM=5` and run verification on `gemini-3.5-flash-lite` (`LLM_VISION_MODEL`), so a round costs the main model about 13 requests. Check the quota left in Google AI Studio first. The Groq backup covers outages, not a used-up quota.
 
 ## Presentation order
 
@@ -40,7 +40,7 @@ The live demo, in presentation order. Every script is in `scripts/demo/` and end
 |---|---|
 | `health.sh`: a check is not `ok` | `docker compose -f deploy/docker-compose.yml ps`, then the logs of that service. `scripts/doctor.sh` runs the worker's preflight checks. |
 | Jobs wait on `youtube` for a long time, or yt-dlp says "Sign in to confirm you're not a bot" | Set `YTDLP_COOKIES_FILE` (README → Troubleshooting) and restart the workers. |
-| Jobs wait on `llm` without faults on | The free quota is used up. Switch `LLM_PROVIDER`, or set `LLM_FALLBACK_PROVIDER=groq` with `GROQ_API_KEY`, then restart the workers. |
+| Jobs wait on `llm` without faults on | The free quota is used up. Switch `LLM_MODEL`, `LLM_PROVIDER` or the API key, then restart the workers. |
 | `dlq.sh` takes minutes | The demo profile isn't loaded; restart with `--env-file deploy/demo.env`. |
 | `kill-worker.sh`: "job reached PUBLISHING before EXTRACTING_FRAMES" or no lease owner | The demo profile isn't loaded, or the video has very few visual moments. Use a longer slide-heavy video. |
 | A fault seems stuck on | `curl -X PUT localhost:8080/admin/faults -H "Authorization: Bearer $ADMIN_TOKEN" -d '{"llm_429_rate":"0","notion_429_rate":"0","youtube_429_rate":"0","frame_fail_rate":"0","frame_fail_all":"false"}'` |
@@ -53,7 +53,7 @@ Run every script twice in a row on a fresh `down -v` / `up` with the demo profil
 scripts/demo/run-all.sh --fresh
 ```
 
-A round makes about 13 LLM jobs, so plan both rounds on a day with Gemini quota left.
+A round makes about 13 LLM jobs. One free-tier key (20 requests/day on `gemini-3-flash-preview`) covers one round, so the second round in a row needs a second key: swap `GEMINI_API_KEY` in `.env` between rounds.
 
 | Date | Run | health | happy | scale | burst | kill-worker | force-429 llm/notion/youtube | frames-fail | too-long | dlq |
 |---|---|---|---|---|---|---|---|---|---|---|
