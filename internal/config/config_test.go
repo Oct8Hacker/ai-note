@@ -28,6 +28,7 @@ func TestLoadWorkerDefaults(t *testing.T) {
 	assert.Equal(t, 1200, w.MaxVideoSeconds)
 	assert.Equal(t, 8, w.LLMRPM)
 	assert.Equal(t, 200, w.LLMRPD)
+	assert.Equal(t, 4.0, w.YouTubeRPS)
 	assert.Equal(t, 3*time.Second, w.DeferDelay)
 	assert.Equal(t, 3.0, w.MaxFrameDriftSec)
 	assert.Equal(t, "gemini", w.LLMProvider)

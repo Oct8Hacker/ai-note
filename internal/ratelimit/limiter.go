@@ -127,7 +127,9 @@ func FromWorkerConfig(cfg config.Worker) (map[string]BucketSpec, BucketSpec, map
 		pipeline.BucketLLMRequests:         req,
 		pipeline.BucketLLMFallbackRequests: req,
 		pipeline.BucketLLMTokens:           {Capacity: tpm / 6, RefillPerSec: tpm / 60},
-		pipeline.BucketYouTube:             {Capacity: 1, RefillPerSec: cfg.YouTubeRPS},
+		// One second of refill (at least 1), so a frame's scene check and
+		// sharpness candidates (4 stream reads) can start together.
+		pipeline.BucketYouTube: {Capacity: max(1, cfg.YouTubeRPS), RefillPerSec: cfg.YouTubeRPS},
 	}
 	notion := BucketSpec{Capacity: 3, RefillPerSec: cfg.NotionRPS}
 	daily := map[string]DailySpec{}

@@ -168,12 +168,18 @@ func (r *frameRun) capturePending(ctx context.Context, rows []pipeline.Frame) er
 	return ctx.Err()
 }
 
-func (r *frameRun) capture(ctx context.Context, row pipeline.Frame, retry bool) (pipeline.Frame, error) {
+// ffCtx bounds one ffmpeg call by FrameTimeout. Waiting for YouTube tokens
+// happens outside it: when jobs share the bucket, a frame waits instead of
+// failing (the limiter itself gives up after LIMITER_MAX_WAIT and the job is
+// retried later with its captured frames kept).
+func (r *frameRun) ffCtx(ctx context.Context) (context.Context, context.CancelFunc) {
 	if r.FrameTimeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, r.FrameTimeout)
-		defer cancel()
+		return context.WithTimeout(ctx, r.FrameTimeout)
 	}
+	return ctx, func() {}
+}
+
+func (r *frameRun) capture(ctx context.Context, row pipeline.Frame, retry bool) (pipeline.Frame, error) {
 	if delay := r.deps.Faults.FrameDelay(ctx); delay > 0 {
 		timer := time.NewTimer(delay)
 		defer timer.Stop()
@@ -196,7 +202,9 @@ func (r *frameRun) capture(ctx context.Context, row pipeline.Frame, retry bool) 
 		if err := r.deps.Limiter.Acquire(ctx, pipeline.BucketYouTube, 1); err != nil {
 			return row, err
 		}
-		changes, err := r.FF.SceneChanges(ctx, r.source, max(0, t-2), t+2, r.SceneThreshold)
+		fctx, cancel := r.ffCtx(ctx)
+		changes, err := r.FF.SceneChanges(fctx, r.source, max(0, t-2), t+2, r.SceneThreshold)
+		cancel()
 		if err != nil {
 			return row, err
 		}
@@ -223,7 +231,9 @@ func (r *frameRun) capture(ctx context.Context, row pipeline.Frame, retry bool) 
 		if err := r.deps.Limiter.Acquire(ctx, pipeline.BucketYouTube, 1); err != nil {
 			return row, err
 		}
-		data, err := r.FF.Capture(ctx, r.source, at)
+		fctx, cancel := r.ffCtx(ctx)
+		data, err := r.FF.Capture(fctx, r.source, at)
+		cancel()
 		score := 0.
 		if err == nil && len(offsets) > 1 {
 			score, err = Sharpness(data)

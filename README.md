@@ -90,11 +90,11 @@ Everything is configured through `.env`. [`.env.example`](.env.example) lists ev
 | `NOTION_VERSION` | `2025-09-03` | Pinned Notion API version. |
 | `NOTION_MAX_IMAGE_BYTES` | `4500000` | Larger frames are re-encoded before upload. |
 | `NOTION_UPLOAD_REUSE_WINDOW` | `50m` | A rerun reuses a frame upload younger than this. |
-| `YOUTUBE_RPS` | `1` | yt-dlp/ffmpeg requests per second to YouTube. |
+| `YOUTUBE_RPS` | `4` | YouTube requests per second (yt-dlp calls and ffmpeg stream reads), shared by all workers. |
 | `YTDLP_COOKIES_FILE` | empty | Cookies for YouTube bot checks ([§10](#10-troubleshooting)). |
 | `MAX_VIDEO_SECONDS` | `1200` | Videos longer than this are rejected before processing. |
 | `MAX_FRAMES` | `8` | Most frames per page. |
-| `FRAME_CONCURRENCY` / `FRAME_TIMEOUT` | `4` / `30s` | Parallel captures and the per-frame timeout. |
+| `FRAME_CONCURRENCY` / `FRAME_TIMEOUT` | `4` / `30s` | Parallel captures, and the timeout for each ffmpeg call (time spent waiting for rate-limit tokens doesn't count). |
 | `FRAME_VERIFY` | `true` | Check each frame against its caption with the vision model. |
 | `SCENE_THRESHOLD` | `0.3` | Slide-change sensitivity when snapping to a slide. |
 | `MAX_FRAME_DRIFT_SEC` | `3` | Farthest a captured frame may be from the LLM's timestamp. |

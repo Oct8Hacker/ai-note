@@ -80,7 +80,7 @@ type Worker struct {
 	LimiterMaxWait    time.Duration `env:"LIMITER_MAX_WAIT" envDefault:"60s"`
 	LLMRPDResetTZ     string        `env:"LLM_RPD_RESET_TZ" envDefault:"America/Los_Angeles"`
 
-	YouTubeRPS       float64 `env:"YOUTUBE_RPS" envDefault:"1"`
+	YouTubeRPS       float64 `env:"YOUTUBE_RPS" envDefault:"4"`
 	YtDlpCookiesFile string  `env:"YTDLP_COOKIES_FILE"`
 
 	MaxVideoSeconds     int           `env:"MAX_VIDEO_SECONDS" envDefault:"1200"`

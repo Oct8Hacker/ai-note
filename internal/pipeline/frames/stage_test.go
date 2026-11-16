@@ -164,6 +164,56 @@ func TestReplayAndRateLimit(t *testing.T) {
 		require.InDelta(t, f.RequestedSec, *f.CapturedSec, 3)
 	}
 }
+
+// slowLimiter hands out each token after wait, like a busy shared YouTube bucket.
+type slowLimiter struct{ wait time.Duration }
+
+func (l slowLimiter) Acquire(ctx context.Context, _ string, _ int) error {
+	select {
+	case <-time.After(l.wait):
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// hangingFF never finishes a capture until its context ends, like a stuck ffmpeg.
+type hangingFF struct{}
+
+func (hangingFF) Capture(ctx context.Context, _ string, _ float64) ([]byte, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+func (hangingFF) SceneChanges(context.Context, string, float64, float64, float64) ([]float64, error) {
+	return nil, nil
+}
+
+// FRAME_TIMEOUT bounds ffmpeg work only. Waiting for rate-limit tokens must not
+// count: with several jobs sharing the YouTube bucket, frames timed out while
+// queueing and were published as missing images.
+func TestFrameTimeoutCountsOnlyFFmpeg(t *testing.T) {
+	var jpegData bytes.Buffer // sharpness scoring needs a real JPEG
+	require.NoError(t, jpeg.Encode(&jpegData, image.NewGray(image.Rect(0, 0, 4, 4)), nil))
+	h := fixture(t)
+	h.s.FF = &trackedCapture{data: jpegData.Bytes()}
+	h.s.Snap, h.s.PickSharpest = true, true   // 4 tokens per frame
+	h.s.FrameTimeout = 100 * time.Millisecond // less than the 4 x 40 ms of waiting
+	h.deps.Limiter = slowLimiter{wait: 40 * time.Millisecond}
+	require.NoError(t, h.run())
+	for _, row := range h.rows(t) {
+		require.Equal(t, captured, row.Status, "frame %d failed while waiting for tokens", row.Idx)
+	}
+
+	h = fixture(t)
+	h.s.FF = hangingFF{}
+	h.s.FrameTimeout = 50 * time.Millisecond
+	require.NoError(t, h.run())
+	for _, row := range h.rows(t) {
+		require.Equal(t, failed, row.Status, "a hung ffmpeg call must still time out")
+		require.Equal(t, pipeline.WarnFrameExtractionFailed, row.WarningCode)
+	}
+}
+
 func TestCaptureFailures(t *testing.T) {
 	for _, all := range []bool{false, true} {
 		h := fixture(t)
