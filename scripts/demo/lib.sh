@@ -32,6 +32,9 @@ pass() { echo "PASS $SCRIPT: $*"; exit 0; }
 fail() { echo "FAIL $SCRIPT: $*" >&2; exit 1; }
 elapsed() { echo $(( $(date +%s) - $1 )); }
 
+# Git Bash on Windows rewrites /paths in docker arguments; turn that off.
+export MSYS_NO_PATHCONV=1
+
 compose() {
   docker compose -f "$ROOT/deploy/docker-compose.yml" --env-file "$ROOT/.env" "$@"
 }
