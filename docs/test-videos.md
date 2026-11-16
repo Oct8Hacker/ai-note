@@ -18,5 +18,6 @@ Run with `NOTION_TEST_TOKEN=… scripts/demo/happy.sh <url>`. The script prints 
 | Date | Video # | Destination (page/database) | LLM provider | Final status | End-to-end (s) | Frames requested / published | Notes |
 |---|---|---|---|---|---|---|---|
 | 2026-11-16 | 1 (Bubble Sort) | page (AI Video Notes) | gemini / gemini-3-flash-preview | `COMPLETED` | 80 | 8 / 8 | No warnings. All frames verified. |
+| 2026-11-16 | 1 (Bubble Sort), **from the extension** | page (AI Video Notes) | gemini / gemini-3-flash-preview | `COMPLETED` | 90 | 7 / 7 | No warnings. Z1 step 5. |
 | 2026-11-16 | 3 (Command Line) | page (AI Video Notes) | gemini / gemini-3.5-flash-lite | `COMPLETED` | 11 | 0 / 0 | flash-lite flagged no visual moments; yt-dlp 2025.10.22 at the time. |
 | | | | | | | | |

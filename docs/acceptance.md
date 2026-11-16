@@ -12,7 +12,7 @@ Go tests are `package.TestName`; extension tests are `file › test`.
 | # | Requirement (source spec) | Proof | Status | Evidence |
 |---|---|---|---|---|
 | 1 | Video → summarised notes + real frames, published to Notion | `happy.sh` on test videos #1–#3 (`docs/test-videos.md`) | ✅ live | 2026-11-16: `happy.sh` on video #1 `COMPLETED`, 8/8 frames, page published |
-| 2 | Driven entirely from the extension | Z1 step 5 (Take Notes → View in Notion); `jobs.test.ts › takeNotes …` | 🔶 live | |
+| 2 | Driven entirely from the extension | Z1 step 5 (Take Notes → View in Notion); `jobs.test.ts › takeNotes …` | ✅ live | 2026-11-16: Take Notes in Chrome on video #1 → `COMPLETED`, 7/7 frames, 90 s, no warnings |
 | 3 | Queue-backed worker pool | `worker.TestHappyPathFakeStages`, `queue.TestPublishConfirmed` | ✅ test | |
 | 4 | Respect every external API's rate limits | `ratelimit.TestSharedAcrossClients`, `TestBucketRate`, `TestDailyCap`, `TestNotionTemplate`; `notion.TestLimiterBucketPerToken`; `llm.TestGuardedFallbackAndBuckets`; live: `burst.sh` | ✅ test + 🔶 live | |
 | 5 | Four separate containers; kill or scale one without touching others | `deploy/docker-compose.yml`; `scale.sh 3`, `kill-worker.sh` | 🔶 live | |
@@ -25,7 +25,7 @@ Go tests are `package.TestName`; extension tests are `file › test`.
 | 12 | One-time Notion OAuth, token stored, no re-prompt | `auth.test.ts › connectWithOAuth …`, `› rejects an OAuth response with an unrelated state`; `api.TestExchangeOK`, `TestExchangeRejectsForeignRedirect`; live: Mode B in Z4 step 2 | ✅ test + 🔶 live | |
 | 13 | Background submits jobs and relays status | `jobs.test.ts › takeNotes uses a fresh idempotency key per click …`; `poller.test.ts › pollOnce saves progress …` | ✅ test | |
 | 14 | Popup shows Queued → … → Done | `JobCard.test.tsx › StepTracker highlights the current step …` | ✅ test | |
-| 15 | One-click "View in Notion" | Z1 step 5 | 🔶 live | |
+| 15 | One-click "View in Notion" | Z1 step 5 | ✅ live | 2026-11-16: popup showed the steps and View in Notion (video #1 from the extension) |
 | 16 | Failures and warnings shown clearly, never raw JSON | `shared.test.ts › errorMessage handles unknown codes`, `› summarizeWarnings …`; `publish.TestWarningCalloutPlainWords` | ✅ test | |
 | 17 | Timestamped transcript, true duration, Constraint A | `transcript.TestParseJSON3Manual`, `TestCleanAutoCaptions`, `TestTooLongRejectedBeforeCaptions`, `TestNoCaptions`; `youtube.TestMetadataParses` | ✅ test | |
 | 18 | LLM summary bullets + timestamps of key visuals | `synthesis.TestStageShortVideoAndRepair`, `TestValidateDropsBadVisuals` | ✅ test | |
