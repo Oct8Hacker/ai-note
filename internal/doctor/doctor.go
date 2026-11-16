@@ -41,7 +41,8 @@ func model(ctx context.Context, name string, p llm.Provider, vision bool) Result
 		return Result{Name: name, Detail: "Model does not support images", Fix: "LLM_VISION_MODEL must support images, or set FRAME_VERIFY=false"}
 	}
 	if err := p.Ping(ctx); err != nil {
-		fix := "Check the model endpoint and worker network connection"
+		// A misspelt LLM_MODEL now shows up here as LLM_UNAVAILABLE (404 is retried).
+		fix := "Check LLM_MODEL is a current model name, then the provider's status and the worker network connection"
 		if pipeline.ErrorCode(err) == "LLM_CONFIG_ERROR" {
 			fix = keyFix
 		}

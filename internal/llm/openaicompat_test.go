@@ -15,7 +15,10 @@ func TestProviderErrors(t *testing.T) {
 	for _, tc := range []struct {
 		status int
 		code   string
-	}{{429, "RATE_LIMITED"}, {500, "LLM_UNAVAILABLE"}, {401, "LLM_CONFIG_ERROR"}} {
+	}{{429, "RATE_LIMITED"}, {500, "LLM_UNAVAILABLE"}, {401, "LLM_CONFIG_ERROR"}, {400, "LLM_CONFIG_ERROR"},
+		// Gemini answered 404 under load for a model that exists (Models.Get
+		// passed); retry it. A wrong model name is caught by the doctor at startup.
+		{404, "LLM_UNAVAILABLE"}} {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Retry-After", "12")
 			w.WriteHeader(tc.status)

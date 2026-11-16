@@ -79,7 +79,9 @@ func (providerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 		return nil, &pipeline.RateLimitedError{Provider: "llm", RetryAfter: delay}
 	}
-	if resp.StatusCode >= 500 || resp.StatusCode == 408 {
+	// 404 is retried too: Gemini returned it under load for a model that
+	// exists. A misspelt LLM_MODEL is caught at startup by the doctor's Ping.
+	if resp.StatusCode >= 500 || resp.StatusCode == 408 || resp.StatusCode == 404 {
 		return nil, &pipeline.RetryableError{Code: "LLM_UNAVAILABLE", Err: fmt.Errorf("provider HTTP %d", resp.StatusCode)}
 	}
 	return nil, &pipeline.FatalError{Code: "LLM_CONFIG_ERROR", Msg: fmt.Sprintf("provider HTTP %d", resp.StatusCode)}
