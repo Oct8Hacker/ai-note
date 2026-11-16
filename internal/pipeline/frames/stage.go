@@ -37,14 +37,21 @@ type Stage struct {
 	Snap, PickSharpest          bool
 }
 
+// maxStreamRefreshes bounds how many fresh stream URLs one stage run fetches
+// after the video host refuses a URL (403).
+const maxStreamRefreshes = 3
+
 // Name identifies the worker stage.
 func (*Stage) Name() pipeline.Status { return pipeline.StatusExtractingFrames }
 
 type frameRun struct {
 	*Stage
-	job    *pipeline.Job
-	deps   pipeline.Deps
-	source string
+	job  *pipeline.Job
+	deps pipeline.Deps
+
+	srcMu     sync.Mutex // guards source and refreshes; frames run concurrently
+	source    string
+	refreshes int
 }
 
 // Run resumes from individual frame checkpoints.
@@ -115,6 +122,8 @@ func (r *frameRun) process(ctx context.Context) error {
 	return r.verifyBatch(ctx, check, false)
 }
 func (r *frameRun) resolve(ctx context.Context) error {
+	r.srcMu.Lock()
+	defer r.srcMu.Unlock()
 	if r.source != "" {
 		return nil
 	}
@@ -123,6 +132,57 @@ func (r *frameRun) resolve(ctx context.Context) error {
 		r.source = src
 	}
 	return err
+}
+
+func (r *frameRun) currentSource() string {
+	r.srcMu.Lock()
+	defer r.srcMu.Unlock()
+	return r.source
+}
+
+// refreshSource replaces a stream URL the video host refused (403) and says
+// whether to try again. Frames share the URL: if another frame already
+// replaced bad, the new one is reused; otherwise a fresh URL is fetched while
+// the run's budget of maxStreamRefreshes lasts.
+func (r *frameRun) refreshSource(ctx context.Context, bad string) (bool, error) {
+	r.srcMu.Lock()
+	defer r.srcMu.Unlock()
+	if r.source != bad {
+		return true, nil
+	}
+	if r.refreshes >= maxStreamRefreshes {
+		return false, nil
+	}
+	r.refreshes++
+	src, err := r.YT.StreamURL(ctx, r.job.VideoID)
+	if err != nil {
+		return false, err
+	}
+	r.source = src
+	return true, nil
+}
+
+// ffCall runs one ffmpeg call on the current stream URL, bounded by
+// FrameTimeout. When the host refuses the URL (403) it retries with a fresh
+// one; once the refresh budget is spent the 403 is returned, which fails only
+// this frame (FR-PIPE-20a).
+func (r *frameRun) ffCall(ctx context.Context, call func(ctx context.Context, src string) error) error {
+	for {
+		src := r.currentSource()
+		fctx, cancel := r.ffCtx(ctx)
+		err := call(fctx, src)
+		cancel()
+		if !errors.Is(err, errStreamForbidden) || ctx.Err() != nil {
+			return err
+		}
+		retry, rerr := r.refreshSource(ctx, src)
+		if rerr != nil {
+			return rerr
+		}
+		if !retry {
+			return err
+		}
+	}
 }
 func (r *frameRun) capturePending(ctx context.Context, rows []pipeline.Frame) error {
 	group, gctx := errgroup.WithContext(ctx)
@@ -202,9 +262,12 @@ func (r *frameRun) capture(ctx context.Context, row pipeline.Frame, retry bool) 
 		if err := r.deps.Limiter.Acquire(ctx, pipeline.BucketYouTube, 1); err != nil {
 			return row, err
 		}
-		fctx, cancel := r.ffCtx(ctx)
-		changes, err := r.FF.SceneChanges(fctx, r.source, max(0, t-2), t+2, r.SceneThreshold)
-		cancel()
+		var changes []float64
+		err := r.ffCall(ctx, func(fctx context.Context, src string) error {
+			var err error
+			changes, err = r.FF.SceneChanges(fctx, src, max(0, t-2), t+2, r.SceneThreshold)
+			return err
+		})
 		if err != nil {
 			return row, err
 		}
@@ -231,9 +294,12 @@ func (r *frameRun) capture(ctx context.Context, row pipeline.Frame, retry bool) 
 		if err := r.deps.Limiter.Acquire(ctx, pipeline.BucketYouTube, 1); err != nil {
 			return row, err
 		}
-		fctx, cancel := r.ffCtx(ctx)
-		data, err := r.FF.Capture(fctx, r.source, at)
-		cancel()
+		var data []byte
+		err := r.ffCall(ctx, func(fctx context.Context, src string) error {
+			var err error
+			data, err = r.FF.Capture(fctx, src, at)
+			return err
+		})
 		score := 0.
 		if err == nil && len(offsets) > 1 {
 			score, err = Sharpness(data)

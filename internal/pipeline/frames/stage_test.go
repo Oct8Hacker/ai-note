@@ -214,6 +214,69 @@ func TestFrameTimeoutCountsOnlyFFmpeg(t *testing.T) {
 	}
 }
 
+// rotatingStream hands out a new URL on every call: stream-1, stream-2, ...
+type rotatingStream struct {
+	mu    sync.Mutex
+	calls int
+}
+
+func (s *rotatingStream) StreamURL(context.Context, string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.calls++
+	return "stream-" + string(rune('0'+s.calls)), nil
+}
+
+// forbiddenFF answers 403 for the URLs in bad (or for every URL when all is
+// set) and captures from any other.
+type forbiddenFF struct {
+	bad map[string]bool
+	all bool
+}
+
+func (f *forbiddenFF) Capture(_ context.Context, src string, _ float64) ([]byte, error) {
+	if f.all || f.bad[src] {
+		return nil, errStreamForbidden
+	}
+	return []byte("frame"), nil
+}
+func (f *forbiddenFF) SceneChanges(_ context.Context, src string, _, _, _ float64) ([]float64, error) {
+	if f.all || f.bad[src] {
+		return nil, errStreamForbidden
+	}
+	return nil, nil
+}
+
+// A URL the video host refuses (403) is replaced by a fresh one, shared by
+// the frames that follow.
+func TestForbiddenStreamGetsFreshURL(t *testing.T) {
+	h := fixture(t)
+	yt := &rotatingStream{}
+	h.s.YT = yt
+	h.s.FF = &forbiddenFF{bad: map[string]bool{"stream-1": true}}
+	require.NoError(t, h.run())
+	for _, row := range h.rows(t) {
+		require.Equal(t, captured, row.Status)
+	}
+	require.Equal(t, 2, yt.calls, "first URL plus one refresh, reused by later frames")
+}
+
+// If the host keeps refusing, the refresh budget runs out and only the frames
+// fail: the job still publishes its notes (with warnings) instead of waiting
+// on a "rate limit" that never clears.
+func TestForbiddenStreamFailsOnlyTheFrames(t *testing.T) {
+	h := fixture(t)
+	yt := &rotatingStream{}
+	h.s.YT = yt
+	h.s.FF = &forbiddenFF{all: true}
+	require.NoError(t, h.run(), "a refused stream must not block the job")
+	for _, row := range h.rows(t) {
+		require.Equal(t, failed, row.Status)
+		require.Equal(t, pipeline.WarnFrameExtractionFailed, row.WarningCode)
+	}
+	require.Equal(t, 1+maxStreamRefreshes, yt.calls, "refreshes are bounded per stage run")
+}
+
 func TestCaptureFailures(t *testing.T) {
 	for _, all := range []bool{false, true} {
 		h := fixture(t)
