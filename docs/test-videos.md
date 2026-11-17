@@ -9,7 +9,7 @@ The videos both of us use for the Z1 happy path, the Z2 demo scripts and the Z4 
 | 3 | Long lecture with slides (~19 min, under 20 min) | `COMPLETED`; this is the timing run | https://www.youtube.com/watch?v=BnJ013X02b8 (proposed: Command Line, CS50 Shorts; manual English captions) | 17:52 | Aryan ☐ Om ☐ |
 | 4 | Over 20 min | `FAILED`, `VIDEO_TOO_LONG`, before captions are fetched (Constraint A) | https://www.youtube.com/watch?v=6FkRvTtUc-o (proposed; `too-long.sh` PASS 13 Nov) | 60:51 | Aryan ☐ Om ☐ |
 | 5 | Private or unavailable | `DEAD_LETTERED`, `RETRIES_EXHAUSTED` after the retry budget | https://www.youtube.com/watch?v=aaaaaaaaaaa (proposed: a valid-format ID that doesn't exist, so yt-dlp reports "Video unavailable"; `dlq.sh` PASS 13 Nov) | — | Aryan ☐ Om ☐ |
-| 6 | No captions at all | `FAILED`, `NO_TRANSCRIPT` | _TBD_ | | |
+| 6 | No captions at all | `FAILED`, `NO_TRANSCRIPT` | https://www.youtube.com/watch?v=IMLQFahPpuo (proposed: "1 Minute Soft Piano Music", no manual or automatic captions; 2026-11-17: `FAILED NO_TRANSCRIPT` in 4 s, no LLM call) | 1:06 | Aryan ☐ Om ☐ |
 
 ## Timing runs (NFR-PERF-2: ≤ 90 s end to end)
 
