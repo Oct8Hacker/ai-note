@@ -39,7 +39,7 @@ Clone to first Notion page should take under 15 minutes.
    git clone https://github.com/Oct8Hacker/ai-note.git && cd ai-note
    scripts/setup.sh            # Windows PowerShell: powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
    ```
-2. **Start the stack.** It uses the prebuilt release images when they exist and otherwise builds from source (a few minutes the first time).
+2. **Start the stack.** It pulls the prebuilt release images when your Docker can access them; otherwise (for example while the images are private) Compose builds them from source, which takes a few minutes the first time. Either way the command is the same.
    ```bash
    docker compose -f deploy/docker-compose.yml --env-file .env up -d
    curl http://localhost:8080/healthz      # wait for "status": "ok" and "workers_alive": 2
