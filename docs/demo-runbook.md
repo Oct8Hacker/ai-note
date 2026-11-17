@@ -16,7 +16,7 @@ The live demo, in presentation order. Every script is in `scripts/demo/` and end
    ```
 3. Open in the browser: the "AI Video Notes" page in Notion, the RabbitMQ UI at http://localhost:15672 (guest/guest), and a YouTube tab with video #1.
 4. Dry run: `scripts/demo/health.sh` must PASS.
-5. **LLM quota:** a round makes about 13 LLM jobs, and each job makes two calls (summary and frame verification). With `gemini-3-flash-preview` on the free tier (5 requests/min, 20/day), set `LLM_RPM=5` and run verification on `gemini-3.5-flash-lite` (`LLM_VISION_MODEL`), so a round costs the main model about 13 requests. Check the quota left in Google AI Studio first. The Groq backup covers outages, not a used-up quota.
+5. **LLM quota:** a round makes about 13 LLM jobs, and each job makes two calls (summary and frame verification). With `gemini-3-flash-preview` on the free tier (5 requests/min, 20/day), set `LLM_RPM=4` (one under Google's limit, see README §5) and run verification on `gemini-3.5-flash-lite` (`LLM_VISION_MODEL`), so a round costs the main model about 13 requests. Check the quota left in Google AI Studio first. The Groq backup covers outages, not a used-up quota.
 
 ## Presentation order
 

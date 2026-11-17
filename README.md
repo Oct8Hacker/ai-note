@@ -122,7 +122,7 @@ Everything is configured through `.env`. [`.env.example`](.env.example) lists ev
 | `FAULT_*` | off | Fault injection; usually set live with `PUT /admin/faults`. |
 | `LOG_LEVEL` | `info` | Logging. |
 
-**Free-tier limits differ per model.** Check your model's limits in Google AI Studio (Rate limit page) and set `LLM_RPM` to its requests per minute. For example, `gemini-3-flash-preview` allows 5 requests/min and 20/day, so use `LLM_RPM=5`. A job makes two LLM calls (summary, then frame verification). To make the daily quota last twice as long, run verification on a model with a larger quota: `LLM_VISION_PROVIDER=gemini` and `LLM_VISION_MODEL=gemini-3.5-flash-lite` (500/day). `LLM_RPM` and `LLM_RPD` count the calls to both models together.
+**Free-tier limits differ per model.** Check your model's limits in Google AI Studio (Rate limit page) and set `LLM_RPM` to **one less** than its requests per minute: the limiter keeps a one-request reserve, so up to `LLM_RPM` + 1 calls can land in the same minute. For example, `gemini-3-flash-preview` allows 5 requests/min and 20/day, so use `LLM_RPM=4`. A job makes two LLM calls (summary, then frame verification). To make the daily quota last twice as long, run verification on a model with a larger quota: `LLM_VISION_PROVIDER=gemini` and `LLM_VISION_MODEL=gemini-3.5-flash-lite` (500/day). `LLM_RPM` and `LLM_RPD` count the calls to both models together.
 
 **Paid key or another provider.** With a paid key, raise `LLM_RPM`, `LLM_TPM` and `LLM_RPD` to about 80 % of your quota. To switch provider, set `LLM_PROVIDER`, its key and `LLM_MODEL`, then restart the workers (`docker compose -f deploy/docker-compose.yml --env-file .env up -d worker`).
 
