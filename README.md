@@ -23,6 +23,8 @@ It is a distributed system: a Chrome extension, an API gateway, RabbitMQ, a work
 - A **Notion** account.
 - A **Gemini API key**: free from [Google AI Studio](https://aistudio.google.com/apikey). Groq or OpenRouter also work (see [Configuration](#5-configuration)).
 - Git Bash or WSL on Windows for the `scripts/*.sh` helpers (`scripts/setup.ps1` is a native PowerShell alternative for setup).
+- **`curl` and `jq`** for the demo scripts (`scripts/demo/`). Git Bash has `curl` but not `jq`: on Windows run `winget install jqlang.jq`, then open a new terminal.
+- **Node.js 20+** only if you build the extension yourself instead of using the release zip.
 
 ## 2. Base URL
 
