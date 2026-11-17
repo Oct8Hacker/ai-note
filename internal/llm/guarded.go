@@ -23,11 +23,13 @@ func (g *Guarded) SupportsImages() bool { return g.Primary.SupportsImages() }
 
 // Ping checks the primary provider without generating tokens.
 func (g *Guarded) Ping(ctx context.Context) error { return g.Primary.Ping(ctx) }
+
+// reserve takes the per-minute request and token budgets first and the daily
+// budget last. A per-minute wait can end in a rate-limit retry, and a daily
+// unit taken before it would be spent without buying a call.
 func (g *Guarded) reserve(ctx context.Context, tokens int) error {
-	for _, bucket := range []string{pipeline.BucketLLMDaily, pipeline.BucketLLMRequests} {
-		if err := g.Limiter.Acquire(ctx, bucket, 1); err != nil {
-			return err
-		}
+	if err := g.Limiter.Acquire(ctx, pipeline.BucketLLMRequests, 1); err != nil {
+		return err
 	}
 	for tokens > 0 {
 		chunk := tokens
@@ -39,7 +41,7 @@ func (g *Guarded) reserve(ctx context.Context, tokens int) error {
 		}
 		tokens -= chunk
 	}
-	return nil
+	return g.Limiter.Acquire(ctx, pipeline.BucketLLMDaily, 1)
 }
 func (g *Guarded) call(ctx context.Context, p Provider, r JSONRequest) (JSONResponse, error) {
 	out, err := p.GenerateJSON(ctx, r)
