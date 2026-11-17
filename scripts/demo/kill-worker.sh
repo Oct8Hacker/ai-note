@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # kill-worker.sh <url> — SIGKILL the worker holding a job in
-# EXTRACTING_FRAMES. Another worker must resume it within 15 s (progress
-# moves again) and the job must end with exactly one Notion page.
+# EXTRACTING_FRAMES. Another worker must take the job over within 15 s (it
+# holds the job's lease and resumes the stage from the last checkpoint), and
+# the job must end with exactly one Notion page.
 # Run with deploy/demo.env loaded so frames are slow enough to catch.
 source "$(dirname "$0")/lib.sh"
 [ $# -eq 1 ] || { echo "usage: $0 <youtube-url>" >&2; exit 2; }
@@ -19,8 +20,11 @@ done
 
 pg_user=$(env_value POSTGRES_USER)
 pg_db=$(env_value POSTGRES_DB)
-owner=$(compose exec -T postgres psql -U "${pg_user:-notes}" -d "${pg_db:-notes}" -tAc \
-  "SELECT lease_owner FROM jobs WHERE id = '$job'" | tr -d '[:space:]')
+lease_owner() {
+  compose exec -T postgres psql -U "${pg_user:-notes}" -d "${pg_db:-notes}" -tAc \
+    "SELECT coalesce(lease_owner, '') FROM jobs WHERE id = '$job'" | tr -d '[:space:]'
+}
+owner=$(lease_owner)
 [ -n "$owner" ] || fail "job has no lease_owner"
 container=""
 for c in $(compose ps -q worker); do
@@ -33,19 +37,26 @@ docker kill -s KILL "$container" >/dev/null
 killed=$(date +%s)
 echo "killed worker $owner at progress $before%"
 
+# Taken over = another worker now holds the job's lease. It can claim the job
+# once the dead worker's heartbeat key expires (WORKER_HEARTBEAT_TTL, 6 s).
 recovered=""
+new_owner=""
 while [ "$(elapsed "$killed")" -lt 120 ]; do
-  view=$(job_view "$job")
-  status=$(echo "$view" | jq -r .status)
-  progress=$(echo "$view" | jq -r .progress)
-  if [ "$progress" -gt "$before" ] || [ "$status" != EXTRACTING_FRAMES ]; then
+  new_owner=$(lease_owner)
+  if [ -n "$new_owner" ] && [ "$new_owner" != "$owner" ]; then
     recovered=$(elapsed "$killed")
     break
   fi
+  if is_terminal "$(job_status "$job")"; then recovered=$(elapsed "$killed"); break; fi
   sleep 0.5
 done
-[ -n "$recovered" ] || fail "no progress within 120s of the kill"
-echo "recovered in ${recovered}s"
+[ -n "$recovered" ] || fail "no other worker took the job within 120s of the kill"
+echo "worker ${new_owner:-?} took over in ${recovered}s"
+# Progress moves again once the new worker finishes its next frame.
+while [ "$(job_view "$job" | jq -r .progress)" -le "$before" ] && [ "$(elapsed "$killed")" -lt 120 ]; do
+  sleep 0.5
+done
+echo "progress moved past $before% after $(elapsed "$killed")s"
 docker start "$container" >/dev/null || true
 
 status=$(wait_terminal "$job" 900)
@@ -53,10 +64,23 @@ case "$status" in
   COMPLETED|COMPLETED_WITH_WARNINGS) ;;
   *) fail "job ended $status" ;;
 esac
+
+# Notion's search index lags behind page creation, so search again until the
+# page shows up, then once more to catch a late duplicate.
 short=${job:0:6}
-pages=$(notion_curl --fail-with-body "$GW/notion/pages" |
-  jq --arg s "· $short" '[.pages[] | select(.title | endswith($s))] | length')
+count_pages() {
+  notion_curl --fail-with-body "$GW/notion/pages" |
+    jq --arg s "· $short" '[.pages[] | select(.title | endswith($s))] | length'
+}
+searched=$(date +%s)
+pages=$(count_pages)
+while [ "$pages" = 0 ] && [ "$(elapsed "$searched")" -lt 90 ]; do
+  sleep 5
+  pages=$(count_pages)
+done
+sleep 5
+pages=$(count_pages)
 echo "Notion pages for job $short: $pages"
-[ "$recovered" -le 15 ] || fail "recovered in ${recovered}s, want <= 15s"
+[ "$recovered" -le 15 ] || fail "taken over in ${recovered}s, want <= 15s"
 [ "$pages" = 1 ] || fail "found $pages pages for the job, want exactly 1"
-pass "recovered in ${recovered}s; one Notion page"
+pass "taken over in ${recovered}s; one Notion page"

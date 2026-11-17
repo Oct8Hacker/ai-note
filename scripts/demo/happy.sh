@@ -37,7 +37,7 @@ resp=$(printf '%s' "$body" | curl -sS -X POST "$gw/jobs" \
 code=${resp##*$'\n'}
 resp=${resp%$'\n'*}
 if [ "$code" != 202 ]; then
-  echo "POST /jobs failed (HTTP $code):" >&2
+  echo "FAIL happy.sh: POST /jobs failed (HTTP $code):" >&2
   echo "$resp" | jq . >&2 2>/dev/null || echo "$resp" >&2
   exit 1
 fi
@@ -58,7 +58,7 @@ while :; do
     COMPLETED|COMPLETED_WITH_WARNINGS|FAILED|DEAD_LETTERED) break ;;
   esac
   if [ $(( $(date +%s) - start )) -ge "$timeout" ]; then
-    echo "timed out after ${timeout}s in status $status" >&2
+    echo "FAIL happy.sh: timed out after ${timeout}s in status $status" >&2
     exit 1
   fi
   sleep 1
@@ -70,6 +70,6 @@ curl -sS --fail "$gw/jobs/$job/results" | jq .
 echo
 echo "end-to-end: ${elapsed}s (target <= 90s); final status: $status"
 case "$status" in
-  COMPLETED|COMPLETED_WITH_WARNINGS) exit 0 ;;
-  *) exit 1 ;;
+  COMPLETED|COMPLETED_WITH_WARNINGS) echo "PASS happy.sh: $status in ${elapsed}s"; exit 0 ;;
+  *) echo "FAIL happy.sh: final status $status after ${elapsed}s"; exit 1 ;;
 esac

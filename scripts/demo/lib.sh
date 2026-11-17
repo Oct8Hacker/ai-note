@@ -11,7 +11,9 @@
 # config on stdin (-K -) and jq reads the Notion token with env.*.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# pwd -W (Git Bash) gives D:/… so docker.exe gets a Windows path even with
+# MSYS_NO_PATHCONV=1 below; elsewhere it fails and plain pwd is used.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && { pwd -W 2>/dev/null || pwd; })"
 GW="${GATEWAY_URL:-http://localhost:8080}"
 SCRIPT="$(basename "$0")"
 
