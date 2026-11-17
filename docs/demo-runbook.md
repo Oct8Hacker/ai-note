@@ -28,7 +28,7 @@ The live demo, in presentation order. Every script is in `scripts/demo/` and end
 | 4 | `scripts/demo/happy.sh <video #2>` | "Same flow through the API, with each status change and the end-to-end time." | Status lines, results JSON, `end-to-end: Ns`; ≤ 90 s target |
 | 5 | `scripts/demo/scale.sh 3`, then `scale.sh 2` | "Workers are stateless. Scaling is one compose command, and health sees each worker's heartbeat." | `workers_alive=3`, then `=2`; PASS twice |
 | 6 | `scripts/demo/burst.sh <#1> <#2> <#3>` | "Six jobs at once share one Redis rate limiter across all workers, so we never exceed a provider's limit." | Six jobs progress together; `provider_429_total unchanged`; PASS |
-| 7 | `scripts/demo/kill-worker.sh <video #1>` | "I SIGKILL the worker holding this job mid-frame-extraction. Its lease expires, another worker resumes from the last checkpoint, and the job still ends with exactly one page." | `killed worker …`, `recovered in Ns` (≤ 15), `one Notion page`; PASS |
+| 7 | `scripts/demo/kill-worker.sh <video #2>` | "I SIGKILL the worker holding this job mid-frame-extraction. RabbitMQ redelivers the message at once; as soon as the dead worker's 6-second heartbeat expires, another worker takes the lease and resumes from the last checkpoint. The job still ends with exactly one page." | `killed worker …`, `took over in Ns` (≤ 15; about 6–8 s), `progress moved …`, `one Notion page`; PASS |
 | 8 | `scripts/demo/force-429.sh llm <video #1>` (also `notion`, `youtube`) | "70 % of LLM calls now return 429. The job waits with a countdown instead of failing, and rate-limit retries don't use up its failure budget." Show the popup's waiting state if the extension is open. | `{"status":…,"waiting":{…}}`, `fault off`, completed; PASS |
 | 9 | `scripts/demo/frames-fail.sh <video #1>` | "If some frames fail we publish with warnings. If all fail we still publish a text-only page and never substitute an image." | First job `COMPLETED_WITH_WARNINGS`, second `frames_published: 0`; PASS |
 | 10 | `scripts/demo/too-long.sh <video #4>` | "Videos over 20 minutes are rejected before any processing (Constraint A)." | `FAILED VIDEO_TOO_LONG`; PASS |
@@ -57,5 +57,7 @@ A round makes about 13 LLM jobs. One free-tier key (20 requests/day on `gemini-3
 
 | Date | Run | health | happy | scale | burst | kill-worker | force-429 llm/notion/youtube | frames-fail | too-long | dlq |
 |---|---|---|---|---|---|---|---|---|---|---|
-| | 1 | | | | | | | | | |
+| 2026-11-17 | 1 | PASS | PASS (113 s; rerun 111 s) | PASS (rerun) | PASS 6/6, 0 LLM 429s | PASS (rerun: taken over in 6 s, 1 page) | PASS / PASS / PASS | PASS | PASS | PASS (53 s) |
 | | 2 | | | | | | | | | |
+
+Round 1 notes: the first pass was 8/12. `happy.sh` (job COMPLETED but no PASS line), `scale.sh` (wrong `.env` path under Git Bash) and `kill-worker.sh` (measured the next frame instead of the takeover; Notion search lag) were script bugs, fixed in the same commit as this note; all four passed on the rerun. Round 2 needs a second Gemini key (one free-tier key covers one round a day).
