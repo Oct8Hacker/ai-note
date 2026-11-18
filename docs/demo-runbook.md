@@ -15,7 +15,8 @@ The live demo, in presentation order. Every script is in `scripts/demo/` and end
    export NOTION_TEST_TOKEN=...      # internal integration token
    ```
 3. Open in the browser: the "AI Video Notes" page in Notion, the RabbitMQ UI at http://localhost:15672 (guest/guest), and a YouTube tab with video #1.
-4. Dry run: `scripts/demo/health.sh` must PASS.
+4. **Turn off any VPN** (Cloudflare WARP included) on the demo laptop. With WARP on, YouTube refused captions for hours on 17–18 Nov.
+   Dry run: `scripts/demo/health.sh` must PASS.
 5. **LLM quota:** a round makes about 13 LLM jobs, and each job makes two calls (summary and frame verification). With `gemini-3-flash-preview` on the free tier (5 requests/min, 20/day), set `LLM_RPM=4` (one under Google's limit, see README §5) and run verification on `gemini-3.5-flash-lite` (`LLM_VISION_MODEL`), so a round costs the main model about 13 requests. Check the quota left in Google AI Studio first. The Groq backup covers outages, not a used-up quota.
 
 ## Presentation order
@@ -39,7 +40,7 @@ The live demo, in presentation order. Every script is in `scripts/demo/` and end
 | Symptom | Fix |
 |---|---|
 | `health.sh`: a check is not `ok` | `docker compose -f deploy/docker-compose.yml ps`, then the logs of that service. `scripts/doctor.sh` runs the worker's preflight checks. |
-| Jobs wait on `youtube` for a long time, or yt-dlp says "Sign in to confirm you're not a bot" | Set `YTDLP_COOKIES_FILE` (README → Troubleshooting) and restart the workers. |
+| Jobs wait on `youtube` for a long time, subtitles get "HTTP Error 429", or yt-dlp says "Sign in to confirm you're not a bot" | Turn off any VPN (Cloudflare WARP included): YouTube limits shared VPN addresses. If it persists, set `YTDLP_COOKIES_FILE` (README → Troubleshooting) and restart the workers. |
 | Jobs wait on `llm` without faults on | The free quota is used up. Switch `LLM_MODEL`, `LLM_PROVIDER` or the API key, then restart the workers. |
 | `dlq.sh` takes minutes | The demo profile isn't loaded; restart with `--env-file deploy/demo.env`. |
 | `kill-worker.sh`: "job reached PUBLISHING before EXTRACTING_FRAMES" or no lease owner | The demo profile isn't loaded, or the video has very few visual moments. Use a longer slide-heavy video. |
@@ -58,6 +59,8 @@ A round makes about 13 LLM jobs. One free-tier key (20 requests/day on `gemini-3
 | Date | Run | health | happy | scale | burst | kill-worker | force-429 llm/notion/youtube | frames-fail | too-long | dlq |
 |---|---|---|---|---|---|---|---|---|---|---|
 | 2026-11-17 | 1 | PASS | PASS (113 s; rerun 111 s) | PASS (rerun) | PASS 6/6, 0 LLM 429s | PASS (rerun: taken over in 6 s, 1 page) | PASS / PASS / PASS | PASS | PASS | PASS (53 s) |
-| | 2 | | | | | | | | | |
+| 2026-11-18 | 2 | PASS | PASS (57 s) | PASS | PASS 6/6, 0 LLM 429s (287 s) | PASS (taken over in 6 s, 1 page) | PASS / PASS / PASS | PASS | PASS | PASS (52 s) |
 
 Round 1 notes: the first pass was 8/12. `happy.sh` (job COMPLETED but no PASS line), `scale.sh` (wrong `.env` path under Git Bash) and `kill-worker.sh` (measured the next frame instead of the takeover; Notion search lag) were script bugs, fixed in the same commit as this note; all four passed on the rerun. Round 2 needs a second Gemini key (one free-tier key covers one round a day).
+
+Round 2 notes: 12/12 in one run on a fresh stack. Two earlier attempts the same night failed for reasons outside the scripts: the daily LLM budget was spent by rate-limit retries (fixed in bfb03fe, `LLM_RPM` lowered to 4), and Cloudflare WARP was on, so YouTube refused captions (HTTP 429) for over 12 hours. With WARP off the round passed, and every job was faster (happy 57 s instead of 111 s).

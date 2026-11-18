@@ -37,6 +37,6 @@ Every open task is a GitHub issue (A6–A12 = #1–#7, B1–B16 = #8–#23, Z1�
 | [B15](B15.md) | Popup UI | B | 14 Nov (polish 17 Nov) | ✅ done |
 | [B16](B16.md) | Groq/OpenRouter backup wiring | B | 16 Nov (SHOULD) | ✅ done |
 | [Z1](Z1.md) | Wire real stages; happy path end-to-end | A+B | 12 Nov (milestone), extension path 14 Nov | ✅ done |
-| [Z2](Z2.md) | Demo scripts and runbook | A+B | 16 Nov | ⏳ pending |
+| [Z2](Z2.md) | Demo scripts and runbook | A+B | 16 Nov | ✅ done |
 | [Z3](Z3.md) | Setup tooling, README, release | A+B | 18 Nov | ✅ done |
 | [Z4](Z4.md) | Clean-machine rehearsal and acceptance | A+B | 19 Nov | ⏳ pending |
