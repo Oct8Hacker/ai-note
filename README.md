@@ -1,59 +1,440 @@
 # AI-Note
 
-Turn a YouTube lecture into structured Notion notes with real frames from the video. Click **Take Notes** under a YouTube video. A pool of Go workers fetches the captions, writes notes with an LLM, captures the frames the notes refer to with ffmpeg, and publishes a Notion page.
+Turn a YouTube lecture into organized Notion notes, with screenshots captured directly from the video.
 
-It is a distributed system: a Chrome extension, an API gateway, RabbitMQ, a worker pool, Postgres and Redis, all started with Docker Compose. It survives killed workers, provider rate limits and failed frames. The full specification is [`docs/SRS.md`](docs/SRS.md).
+Open a video, click **Take Notes**, and AI-Note will:
 
-- [Prerequisites](#1-prerequisites)
-- [Base URL](#2-base-url)
-- [Quick start](#3-quick-start)
-- [Default Notion destination](#4-default-notion-destination)
-- [Configuration](#5-configuration)
-- [Connecting Notion](#6-connecting-notion)
-- [API reference](#7-api-reference)
-- [Demonstrating failure modes](#8-demonstrating-failure-modes)
-- [Architecture and design choices](#9-architecture-and-design-choices)
-- [Troubleshooting](#10-troubleshooting)
-- [Development](#development)
+1. Read its captions.
+2. Generate structured notes.
+3. Capture relevant frames from the video.
+4. Save the notes and images to your Notion workspace.
 
-## 1. Prerequisites
+**Supported videos:** up to **20 minutes**, with accessible captions.
 
-- **Docker** with Compose v2 (Docker Desktop on Windows/macOS).
-- **Google Chrome**.
-- A **Notion** account.
-- A **Gemini API key**: free from [Google AI Studio](https://aistudio.google.com/apikey). Groq or OpenRouter also work (see [Configuration](#5-configuration)).
-- Git Bash or WSL on Windows for the `scripts/*.sh` helpers (`scripts/setup.ps1` is a native PowerShell alternative for setup).
-- **`curl` and `jq`** for the demo scripts (`scripts/demo/`). Git Bash has `curl` but not `jq`: on Windows run `winget install jqlang.jq`, then open a new terminal.
-- **Node.js 20+** only if you build the extension yourself instead of using the release zip.
+[Setup](#setup) · [Troubleshooting](#troubleshooting) · [Notion OAuth](#optional-connect-notion-with-oauth) · [Default destination](#default-notion-destination) · [Configuration](#configuration-reference) · [API](#api-reference) · [Failure demos](#demonstrating-failure-modes) · [Architecture](#architecture-and-design-choices)
 
-## 2. Base URL
+## Before you begin
 
-The gateway listens on **`http://localhost:8080`**. The extension uses this by default, so a standard setup changes nothing in the extension.
+You will need:
 
-## 3. Quick start
+| Requirement | What it is used for |
+|---|---|
+| Git | Downloading the project |
+| Docker Desktop, running | Running the backend and its supporting services |
+| Google Chrome | Running the extension |
+| A Gemini API key | Generating notes and checking screenshots |
+| A Notion account | Saving your notes |
 
-Clone to first Notion page should take under 15 minutes.
+Get your API key from [Google AI Studio](https://aistudio.google.com/apikey).
 
-1. **Configure.** This creates `.env`, generates `TOKEN_ENC_KEY` and `ADMIN_TOKEN`, and asks for your Gemini key. Running it again never overwrites values you've set.
-   ```bash
-   git clone https://github.com/Oct8Hacker/ai-note.git && cd ai-note
-   scripts/setup.sh            # Windows PowerShell: powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
-   ```
-2. **Start the stack.** It pulls the prebuilt release images when your Docker can access them; otherwise (for example while the images are private) Compose builds them from source, which takes a few minutes the first time. Either way the command is the same.
-   ```bash
-   docker compose -f deploy/docker-compose.yml --env-file .env up -d
-   curl http://localhost:8080/healthz      # wait for "status": "ok" and "workers_alive": 2
-   scripts/doctor.sh                        # checks the LLM key, yt-dlp, ffmpeg and YouTube access
-   ```
-3. **Load the extension.** Either:
-   - download `ainote-extension-<version>.zip` from the latest [release](https://github.com/Oct8Hacker/ai-note/releases) and unzip it, or
-   - build it yourself: `npm --prefix extension ci && npm --prefix extension run build` (output in `extension/dist/`).
+You do **not** need to install Go, ffmpeg, or yt-dlp on your computer for the Docker setup. They are included in the build or worker containers.
 
-   Then open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**, and pick the unzipped folder or `extension/dist`. The extension ID is always `lbmicegifohcileflpbjdanghkgigcia` (pinned by the manifest key; `scripts/extension-id.sh` prints it).
-4. **Connect Notion** with Quick mode ([§6](#6-connecting-notion), 2 minutes): create an internal connection (Notion's Developer connections), give it access to a page called **AI Video Notes**, and paste the token into the popup's **Integration token** field.
-5. **Take notes.** Open a YouTube video of at most 20 minutes with captions, click **Take Notes** under the player, and follow the progress in the popup. When it finishes, click **View in Notion**.
+Node.js and npm are only needed if you choose to build the extension yourself.
 
-## 4. Default Notion destination
+## Setup
+
+Follow these steps in order. Run terminal commands from the project folder unless a step says otherwise.
+
+### 1. Download the project
+
+Open PowerShell on Windows, or Terminal on macOS/Linux:
+
+```sh
+git clone https://github.com/Oct8Hacker/ai-note.git
+cd ai-note
+git switch build/v1
+```
+
+Keep this terminal open for the following steps.
+
+### 2. Create your configuration
+
+Run the command for your operating system.
+
+**Windows PowerShell:**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
+```
+
+**macOS/Linux or Git Bash:**
+
+```bash
+bash scripts/setup.sh
+```
+
+The script:
+
+- Creates a `.env` file in the project folder.
+- Generates the encryption key and admin token.
+- Asks you to paste your Gemini API key.
+
+The API key is hidden while you enter it. Paste it and press **Enter**.
+
+If you skipped the prompt, open `.env` in a text editor and fill in:
+
+```dotenv
+GEMINI_API_KEY=your_api_key_here
+```
+
+Keep `.env` private. Do not upload it to GitHub.
+
+### 3. Choose your AI model
+
+Open `.env` in a text editor. On Windows, you can use:
+
+```powershell
+notepad .env
+```
+
+Set `LLM_MODEL` to a Gemini model available to your API key. The project has been tested with this configuration:
+
+```dotenv
+LLM_PROVIDER=gemini
+LLM_MODEL=gemini-3-flash-preview
+LLM_RPM=4
+LLM_RPD=20
+```
+
+**Check the model's availability and limits in Google AI Studio before using these values.** Model access and quotas can differ between accounts and change over time.
+
+When editing `.env`:
+
+- Remove the leading `#` from a setting to enable it.
+- Replace existing settings instead of adding duplicate entries.
+- Save the file before continuing.
+
+`LLM_RPM` controls requests per minute, and `LLM_RPD` controls requests per day. These limits are shared by all workers. The current limiter can allow one additional request within a minute, so the project recommends `LLM_RPM=4` for a model with a 5-request-per-minute limit.
+
+For your first setup, leave the other settings unchanged. The same model will generate notes and verify frames.
+
+### 4. Start the backend
+
+Make sure Docker Desktop is running, then execute:
+
+```sh
+docker compose -f deploy/docker-compose.yml --env-file .env up -d --build
+```
+
+The first build may take several minutes.
+
+This starts the gateway, two workers, PostgreSQL, Redis, and RabbitMQ.
+
+Check the containers:
+
+```sh
+docker compose -f deploy/docker-compose.yml --env-file .env ps
+```
+
+Then open [the health endpoint](http://localhost:8080/healthz) in your browser.
+
+**You are ready to continue when the response includes:**
+
+```json
+{
+  "status": "ok",
+  "workers_alive": 2
+}
+```
+
+The response includes other fields too. If the workers are still starting, wait briefly and refresh.
+
+### 5. Check the model and video tools
+
+Run:
+
+```sh
+docker compose -f deploy/docker-compose.yml --env-file .env exec -T worker /app/worker doctor
+```
+
+This checks:
+
+- The text model.
+- The vision model.
+- yt-dlp.
+- ffmpeg.
+- YouTube connectivity.
+- Notion OAuth configuration, when enabled.
+
+**Look for `"ok": true` in each result.**
+
+A message saying OAuth is disabled is expected when using the token-based Notion setup below.
+
+If a model or YouTube check fails, use the troubleshooting section before submitting a video.
+
+### 6. Install the Chrome extension
+
+1. Open the project's [Releases page](https://github.com/Oct8Hacker/ai-note/releases).
+2. Download the `ainote-extension-<version>.zip` asset.
+3. Extract the ZIP into a folder you intend to keep.
+4. In Chrome, enter `chrome://extensions` in the address bar.
+5. Turn on **Developer mode**.
+6. Click **Load unpacked**.
+7. Select the extracted folder containing `manifest.json`.
+
+The extension should now appear on the extensions page.
+
+Use Chrome's extensions menu to pin **AI-Note** so its popup is easy to open.
+
+**Keep the gateway URL as `http://localhost:8080`** for the standard local setup.
+
+<details>
+<summary>Alternative: build the extension from source</summary>
+
+Install Node.js and npm compatible with the extension's dependencies, then run from the project folder:
+
+```sh
+npm --prefix extension ci && npm --prefix extension run build
+```
+
+In Chrome's **Load unpacked** dialog, select:
+
+```text
+ai-note/extension/dist
+```
+
+Select `dist`, not the source `extension` folder.
+
+</details>
+
+### 7. Prepare Notion
+
+For local use, the simplest option is an internal Notion connection.
+
+**Create the connection:**
+
+1. Open [Notion's developer connections](https://www.notion.so/profile/integrations).
+2. Create a new connection named **AI Note**.
+3. Select your workspace.
+4. Choose the **internal/token** authentication option.
+5. Enable **Read content**, **Update content**, and **Insert content**.
+6. Copy the connection's secret token.
+
+Notion may use the word **integration** instead of **connection** on some screens.
+
+**Create the destination page:**
+
+1. In Notion, create a page named exactly **AI Video Notes**.
+2. Open that page.
+3. Click **•••** at the top-right of the page.
+4. Find **Connections** or **Connect to**.
+5. Add the **AI Note** connection.
+
+Alternatively, use the connection's **Access → Edit access** settings to grant access to the page.
+
+**Checkpoint:** the page's connections list should include **AI Note**. Creating the connection alone does not give it access to your page.
+
+### 8. Connect the extension to Notion
+
+1. Open the AI-Note extension popup.
+2. Paste your Notion secret into **Integration token**.
+3. Click **Connect with token**.
+4. Select **AI Video Notes** in the destination picker.
+
+If the page is missing, check its connection permissions in Notion and refresh the destination list.
+
+For this setup, leave these `.env` settings empty:
+
+```dotenv
+NOTION_CLIENT_ID=
+NOTION_CLIENT_SECRET=
+```
+
+The Notion token goes into the extension popup, not into either of those fields.
+
+### 9. Generate your first notes
+
+1. Open a public YouTube video with captions and a duration of **20 minutes or less**.
+2. Refresh the page if it was already open when you installed the extension.
+3. Click **Take Notes** below the video player.
+4. Open the extension popup to follow progress.
+5. When processing finishes, click **View in Notion**.
+
+Start with a short lecture or tutorial for your first test.
+
+Processing time depends on the video, model availability, and rate limits. A job waiting for quota may take longer than one that can run immediately.
+
+**Setup is complete when the generated page appears in Notion.**
+
+## Using AI-Note again
+
+Keep Docker Desktop running while processing videos.
+
+To start the backend:
+
+```sh
+docker compose -f deploy/docker-compose.yml --env-file .env up -d
+```
+
+To stop it while keeping its saved data:
+
+```sh
+docker compose -f deploy/docker-compose.yml --env-file .env stop
+```
+
+You do not need to recreate your Notion connection each time.
+
+## Changing the model
+
+Edit these settings in `.env`:
+
+```dotenv
+LLM_PROVIDER=gemini
+LLM_MODEL=your_model_name
+LLM_RPM=your_configured_requests_per_minute
+LLM_RPD=your_configured_requests_per_day
+```
+
+Replace the placeholders with actual values for your account.
+
+Apply the changes:
+
+```sh
+docker compose -f deploy/docker-compose.yml --env-file .env up -d --force-recreate worker
+```
+
+Verify the new configuration:
+
+```sh
+docker compose -f deploy/docker-compose.yml --env-file .env exec -T worker /app/worker doctor
+```
+
+If you explicitly configured `LLM_VISION_PROVIDER` or `LLM_VISION_MODEL`, check those settings as well. Otherwise, frame verification uses the main provider and model.
+
+All supported settings are documented in [`.env.example`](https://github.com/Oct8Hacker/ai-note/blob/build/v1/.env.example).
+
+## Troubleshooting
+
+### The extension cannot connect
+
+Open [the health endpoint](http://localhost:8080/healthz).
+
+If it does not load:
+
+1. Make sure Docker Desktop is running.
+2. Start the backend.
+3. Check the container status:
+
+```sh
+docker compose -f deploy/docker-compose.yml --env-file .env ps
+```
+
+The extension's gateway URL should be `http://localhost:8080` unless you deliberately changed the port.
+
+### The Take Notes button is missing
+
+Check that AI-Note is enabled at `chrome://extensions`, then refresh the YouTube video page.
+
+### The model check fails, or summarizing keeps failing
+
+Run the doctor command from step 5, then inspect recent worker logs:
+
+```sh
+docker compose -f deploy/docker-compose.yml --env-file .env logs --tail=100 worker
+```
+
+| Error | What to check |
+|---|---|
+| Key rejected or authentication failure | Confirm `GEMINI_API_KEY` is correct. |
+| Model not found | Confirm `LLM_MODEL` is available to your account. |
+| `429` or quota exceeded | Check your provider's quota and your configured rate limits. |
+| `503` or `504` | The provider may be unavailable or timing out. Allow retries, or switch to another available model. |
+
+After editing model settings, recreate the workers using the command under **Changing the model**.
+
+A successful health check confirms the infrastructure is running; the doctor command checks model access separately.
+
+### The job is waiting for the model
+
+The shared rate limiter may be delaying requests to stay within the configured quota.
+
+Check the popup's waiting information. Repeatedly submitting the same video will not increase the available quota.
+
+If you have reached your provider's daily quota, wait for its reset or configure another available model/provider with appropriate limits.
+
+### The Notion destination is missing
+
+Open **AI Video Notes** in Notion and grant your connection access through the page's **••• → Connections** menu.
+
+Then reopen or refresh the extension's destination picker.
+
+This also applies to `NOTION_NO_DESTINATION` and `NOTION_PARENT_NOT_FOUND` errors.
+
+### YouTube asks you to confirm you are not a bot
+
+The workers may need cookies from your signed-in YouTube session.
+
+1. Export YouTube cookies in Netscape `cookies.txt` format.
+2. Create a `.ytdlp` folder in the project folder.
+3. Save the file as `.ytdlp/cookies.txt`.
+4. Add this setting to `.env`:
+
+```dotenv
+YTDLP_COOKIES_FILE=/ytdlp/cookies.txt
+```
+
+5. Recreate the workers:
+
+```sh
+docker compose -f deploy/docker-compose.yml --env-file .env up -d --force-recreate worker
+```
+
+Treat the cookies file as a secret. Do not share or commit it.
+
+### Notion OAuth reports a redirect mismatch
+
+The redirect registered in Notion must exactly match `NOTION_REDIRECT_URI`:
+
+```text
+https://lbmicegifohcileflpbjdanghkgigcia.chromiumapp.org/notion
+```
+
+The extension ID is pinned to `lbmicegifohcileflpbjdanghkgigcia` by its manifest key. After correcting `.env`, recreate the gateway:
+
+```sh
+docker compose -f deploy/docker-compose.yml --env-file .env up -d --force-recreate gateway
+```
+
+### A port is already in use
+
+The stack uses host ports `8080`, `5672`, and `15672`.
+
+Stop the conflicting service, or update the relevant host port in `deploy/docker-compose.yml`. If you change the gateway's host port, update the extension's gateway URL too.
+
+## Optional: connect Notion with OAuth
+
+Full OAuth is the one-time OAuth flow required by the project specification. Quick mode uses an internal integration token as a local-setup shortcut; both modes run the same job pipeline.
+
+1. Create a public OAuth connection in [Notion's developer connections](https://www.notion.so/profile/integrations).
+2. Enable **Read content**, **Update content**, and **Insert content**.
+3. Register this exact redirect URI:
+
+```text
+https://lbmicegifohcileflpbjdanghkgigcia.chromiumapp.org/notion
+```
+
+4. Add the connection's OAuth credentials to `.env`:
+
+```dotenv
+NOTION_CLIENT_ID=your_client_id
+NOTION_CLIENT_SECRET=your_client_secret
+NOTION_REDIRECT_URI=https://lbmicegifohcileflpbjdanghkgigcia.chromiumapp.org/notion
+```
+
+5. Apply the configuration:
+
+```sh
+docker compose -f deploy/docker-compose.yml --env-file .env up -d --force-recreate gateway
+```
+
+6. Open the extension popup, click **Connect Notion**, and approve access to your destination page.
+
+For the optional template, create a page titled **AI Video Notes**, publish it using **Share → Publish**, and paste its public URL into the connection's **Notion URL for optional template** field. Notion can copy that template into the user's workspace during connection.
+
+## Default Notion destination
+
+<details>
+<summary>Expand default notion destination</summary>
 
 When a job doesn't name a destination (`notion_parent_id` omitted), the worker picks one in this order:
 
@@ -63,9 +444,14 @@ When a job doesn't name a destination (`notion_parent_id` omitted), the worker p
 
 The extension always sends an explicit destination: the one chosen in the popup's picker, which defaults to "AI Video Notes".
 
-## 5. Configuration
+</details>
 
-Everything is configured through `.env`. [`.env.example`](.env.example) lists every variable with its default; `scripts/setup.sh` copies it. **Bold** rows are required or are the settings the project brief asks to document.
+## Configuration reference
+
+<details>
+<summary>Expand configuration reference</summary>
+
+Everything is configured through `.env`. [`.env.example`](.env.example) lists every variable with its default; `scripts/setup.sh` copies it. Values below are application or template defaults, not a guarantee of provider quota. The setup walkthrough overrides the model and quota settings. Entries marked **required** must be supplied for the selected mode; other bold entries highlight settings required by the project brief.
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -84,16 +470,16 @@ Everything is configured through `.env`. [`.env.example`](.env.example) lists ev
 | `LLM_TIMEOUT` | `90s` | Per-call timeout. |
 | `LIMITER_MAX_WAIT` | `60s` | Longer waits for a rate-limit token requeue the job instead of blocking a worker. |
 | `OLLAMA_URL` | `http://ollama:11434` | Local provider (development only). |
-| **`NOTION_CLIENT_ID`** / **`NOTION_CLIENT_SECRET`** | empty | **Notion OAuth client credentials** (Full OAuth mode only). |
+| **`NOTION_CLIENT_ID`** / **`NOTION_CLIENT_SECRET`** | empty | **Required for Full OAuth mode**; leave empty for Quick mode. |
 | `NOTION_REDIRECT_URI` | `https://lbmicegifohcileflpbjdanghkgigcia.chromiumapp.org/notion` | OAuth redirect; must match the public integration. |
 | `CORS_ALLOWED_ORIGINS` | `chrome-extension://lbmicegifohcileflpbjdanghkgigcia` | Origins allowed to call the gateway. |
-| `NOTION_DEFAULT_PARENT_ID` | empty | Default destination ([§4](#4-default-notion-destination)). |
+| `NOTION_DEFAULT_PARENT_ID` | empty | Default destination ([Default Notion destination](#default-notion-destination)). |
 | `NOTION_RPS` | `2.5` | Notion requests per second per token. |
 | `NOTION_VERSION` | `2025-09-03` | Pinned Notion API version. |
 | `NOTION_MAX_IMAGE_BYTES` | `4500000` | Larger frames are re-encoded before upload. |
 | `NOTION_UPLOAD_REUSE_WINDOW` | `50m` | A rerun reuses a frame upload younger than this. |
 | `YOUTUBE_RPS` | `4` | YouTube requests per second (yt-dlp calls and ffmpeg stream reads), shared by all workers. |
-| `YTDLP_COOKIES_FILE` | empty | Cookies for YouTube bot checks ([§10](#10-troubleshooting)). |
+| `YTDLP_COOKIES_FILE` | empty | Cookies for YouTube bot checks ([Troubleshooting](#troubleshooting)). |
 | `MAX_VIDEO_SECONDS` | `1200` | Videos longer than this are rejected before processing. |
 | `MAX_FRAMES` | `8` | Most frames per page. |
 | `FRAME_CONCURRENCY` / `FRAME_TIMEOUT` | `4` / `30s` | Parallel captures, and the timeout for each ffmpeg call (time spent waiting for rate-limit tokens doesn't count). |
@@ -105,6 +491,8 @@ Everything is configured through `.env`. [`.env.example`](.env.example) lists ev
 | **`AMQP_URL`** | `amqp://guest:guest@rabbitmq:5672/` | **Broker connection string**. |
 | `AMQP_HEARTBEAT` | `10s` | Broker heartbeat. |
 | `DATABASE_URL` | `postgres://notes:notes@postgres:5432/notes?sslmode=disable` | Postgres. Keep in step with `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB`. |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `notes` / `notes` / `notes` | Postgres container settings; keep consistent with `DATABASE_URL`. |
+| `AINOTE_TAG` | `latest` | Compose image tag. A prerelease needs its explicit tag; registry access is required to pull private images. |
 | `REDIS_URL` | `redis://redis:6379/0` | Redis. |
 | **`MAX_ATTEMPTS`** | `5` | **Retry budget** for failures; then the job is dead-lettered. |
 | **`MAX_RATE_LIMIT_RETRIES`** | `8` | **Separate budget for 429 retries**; these don't use up `MAX_ATTEMPTS`. |
@@ -119,49 +507,29 @@ Everything is configured through `.env`. [`.env.example`](.env.example) lists ev
 | `GATEWAY_PORT` / `PUBLIC_BASE_URL` | `8080` / `http://localhost:8080` | Gateway listen port and public URL. |
 | `OUTBOX_SWEEP_INTERVAL` | `2s` | Outbox relay sweep. |
 | `RABBITMQ_MGMT_URL` / `RABBITMQ_USER` / `RABBITMQ_PASS` | `http://rabbitmq:15672` / `guest` / `guest` | RabbitMQ management API (health and DLQ). |
-| `FAULT_*` | off | Fault injection; usually set live with `PUT /admin/faults`. |
+| `FAULT_LLM_429_RATE` / `FAULT_NOTION_429_RATE` / `FAULT_YOUTUBE_429_RATE` | `0` | Inject 429 responses for the named provider; fraction from 0 to 1. |
+| `FAULT_FRAME_FAIL_RATE` | `0` | Fraction of frame captures to fail, from 0 to 1. |
+| `FAULT_FRAME_FAIL_ALL` | `false` | Fail all frame captures for the text-only demo. |
+| `FAULT_STAGE_DELAY_MS` | `0` | Artificial stage delay in milliseconds. |
 | `LOG_LEVEL` | `info` | Logging. |
 
-**Free-tier limits differ per model.** Check your model's limits in Google AI Studio (Rate limit page) and set `LLM_RPM` to **one less** than its requests per minute: the limiter keeps a one-request reserve, so up to `LLM_RPM` + 1 calls can land in the same minute. For example, `gemini-3-flash-preview` allows 5 requests/min and 20/day, so use `LLM_RPM=4`. A job makes two LLM calls (summary, then frame verification). To make the daily quota last twice as long, run verification on a model with a larger quota: `LLM_VISION_PROVIDER=gemini` and `LLM_VISION_MODEL=gemini-3.5-flash-lite` (500/day). `LLM_RPM` and `LLM_RPD` count the calls to both models together.
+**Free-tier limits differ per model.** Check the limits for your own account in Google AI Studio. Set `LLM_RPM` one below the model's requests-per-minute limit because the limiter permits a one-request reserve. Set `LLM_RPD` and `LLM_TPM` to fit your available daily and token quotas. Summary generation and frame verification both consume requests; chunking and retries can consume more. You can select a separate vision model with `LLM_VISION_PROVIDER` and `LLM_VISION_MODEL`, but the configured limits count both models together.
 
 **Paid key or another provider.** With a paid key, raise `LLM_RPM`, `LLM_TPM` and `LLM_RPD` to about 80 % of your quota. To switch provider, set `LLM_PROVIDER`, its key and `LLM_MODEL`, then restart the workers (`docker compose -f deploy/docker-compose.yml --env-file .env up -d worker`).
 
-## 6. Connecting Notion
+</details>
 
-Both modes run the same pipeline. **Full OAuth** is the one-time OAuth flow from the project brief; **Quick** skips registering a public app.
+## API reference
 
-### Mode A — Quick (recommended for graders)
+<details>
+<summary>Expand api reference</summary>
 
-Notion calls these **connections** (older docs and screens say "integrations").
-
-1. Open [notion.so/profile/integrations](https://www.notion.so/profile/integrations). Notion shows it as **Developer tools → Developer connections**. Click **+ New connection**:
-   - **Name:** anything, for example `AI Note`. **Installable in:** your workspace.
-   - **Auth type:** the internal / token option, **not OAuth**.
-   - Save. On the connection's page, make sure **Read content**, **Update content** and **Insert content** are on, and copy its secret. It starts with `ntn_`.
-2. Create a page titled exactly **AI Video Notes**, and give the connection access to it in either of these ways:
-   - Open the page, click the **•••** at the **top-right of the page** (not the right-click menu in the sidebar), choose **Connections** at the bottom (may be labelled **Connect to**), and pick your connection; or
-   - On the connection's page, open its **Access** tab, click **Edit access**, and tick the page.
-
-   Check: the page's top-right **•••** → **Connections** now lists your connection. Without this step every job fails with `NOTION_NO_DESTINATION`.
-3. Open the extension popup, paste the secret into **Integration token**, and click **Connect with token**.
-
-No `NOTION_CLIENT_*` variables are needed. `NOTION_DEFAULT_PARENT_ID` is optional: when it's empty, the page called "AI Video Notes" is found automatically.
-
-### Mode B — Full OAuth
-
-1. At [notion.so/profile/integrations](https://www.notion.so/profile/integrations) (**Developer connections → + New connection**), create a connection with the **OAuth (public)** auth type:
-   - **Redirect URI:** `https://lbmicegifohcileflpbjdanghkgigcia.chromiumapp.org/notion` (the extension ID is pinned, so this is the same on every machine).
-   - **Capabilities:** Read content, Update content, Insert content.
-   - **Notion URL for optional template:** create a page titled **AI Video Notes**, publish it (**Share → Publish**), and paste its public URL. Notion then copies it into each user's workspace when they connect, and it becomes their default destination.
-2. Put the OAuth client ID and secret in `.env` as `NOTION_CLIENT_ID` and `NOTION_CLIENT_SECRET`. Keep `NOTION_REDIRECT_URI` as in `.env.example`.
-3. Restart the gateway: `docker compose -f deploy/docker-compose.yml --env-file .env up -d gateway`.
-4. The popup now shows **Connect Notion**. Click it once and approve. You won't be asked again until access is revoked.
-
-## 7. API reference
+The base URL is `http://localhost:8080`. These examples use Bash syntax; on Windows, run them in Git Bash or WSL. Replace placeholder values before running. For authenticated examples, set `NOTION_TOKEN` to your integration token and `ADMIN_TOKEN` to the value generated in `.env`, in that shell.
 
 All bodies are JSON. Errors look like `{"error": {"code": "…", "message": "…"}}`.
 
-**Submit a job.** Returns `202` with `{"job_id", "status": "QUEUED", "video_id"}`. `notion_parent_id` is optional ([§4](#4-default-notion-destination)). `Idempotency-Key` is optional: resending the same key returns the same job.
+**Submit a job.** Returns `202` with `{"job_id", "status": "QUEUED", "video_id"}`. `notion_parent_id` is optional ([Default Notion destination](#default-notion-destination)). `Idempotency-Key` is optional: resending the same key returns the same job.
+
 ```bash
 curl -X POST localhost:8080/jobs -H 'Content-Type: application/json' \
   -H 'Idempotency-Key: 3f1c2a' \
@@ -169,38 +537,45 @@ curl -X POST localhost:8080/jobs -H 'Content-Type: application/json' \
 ```
 
 **Job status.** Returns `status`, `progress` (0–100), `video_title`, `duration_sec`, `warnings`, `waiting` (set while the job waits on a rate limit: `reason`, `provider`, `next_attempt_at`), `error`, `result` and `attempt`.
+
 ```bash
 curl localhost:8080/jobs/JOB_ID
 ```
 
 **Results** of a finished job: `{"status", "result": {"notion_page_url", "frames_requested", "frames_published"}, "warnings"}`. Returns `409 JOB_NOT_FINISHED` until the job ends.
+
 ```bash
 curl localhost:8080/jobs/JOB_ID/results
 ```
 
 **Health.** Plain `/healthz` checks infrastructure only: Postgres, RabbitMQ, Redis, `workers_alive` and `provider_429_total`. `?deep=1` adds each worker's preflight report: LLM key and model, yt-dlp, ffmpeg, YouTube reachability and the Notion OAuth setup.
+
 ```bash
 curl localhost:8080/healthz
 curl 'localhost:8080/healthz?deep=1'
 ```
 
 **Notion OAuth config, as used by the extension:** `{"oauth_enabled": true|false, "client_id"}`.
+
 ```bash
 curl localhost:8080/auth/notion/config
 ```
 
 **OAuth code exchange.** Full OAuth mode only; the extension calls it after the user approves. Returns the access token and workspace details.
+
 ```bash
 curl -X POST localhost:8080/auth/notion/exchange -H 'Content-Type: application/json' \
   -d '{"code": "CODE_FROM_NOTION", "redirect_uri": "https://lbmicegifohcileflpbjdanghkgigcia.chromiumapp.org/notion"}'
 ```
 
 **Destinations** shared with the integration, for the popup's picker: `{"pages": [{"id", "title", "type", "icon"}]}`.
+
 ```bash
 curl localhost:8080/notion/pages -H "Authorization: Bearer $NOTION_TOKEN"
 ```
 
 **Admin: dead-lettered jobs**, each with its event history. Replay one: it resumes from its last checkpoint and needs the Notion token again, because tokens are never stored.
+
 ```bash
 curl 'localhost:8080/admin/dlq?limit=20' -H "Authorization: Bearer $ADMIN_TOKEN"
 curl -X POST localhost:8080/admin/dlq/JOB_ID/replay -H "Authorization: Bearer $ADMIN_TOKEN" \
@@ -208,13 +583,21 @@ curl -X POST localhost:8080/admin/dlq/JOB_ID/replay -H "Authorization: Bearer $A
 ```
 
 **Admin: fault injection**, set live without restarting anything. Keys: `llm_429_rate`, `notion_429_rate`, `youtube_429_rate`, `frame_fail_rate` (0–1), `frame_fail_all` (`true`/`false`), `stage_delay_ms`.
+
 ```bash
 curl localhost:8080/admin/faults -H "Authorization: Bearer $ADMIN_TOKEN"
 curl -X PUT localhost:8080/admin/faults -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H 'Content-Type: application/json' -d '{"llm_429_rate": "0.7"}'
 ```
 
-## 8. Demonstrating failure modes
+</details>
+
+## Demonstrating failure modes
+
+<details>
+<summary>Expand demonstrating failure modes</summary>
+
+Run these helpers in Bash (Git Bash or WSL on Windows); they also require `curl` and `jq`. Run from the repository root.
 
 Start the stack with the demo profile (short retries, slow frames), then run the scripts in `scripts/demo/`. Each ends with a `PASS` or `FAIL` line. [`docs/demo-runbook.md`](docs/demo-runbook.md) gives the presentation order and what to show for each.
 
@@ -223,7 +606,7 @@ docker compose -f deploy/docker-compose.yml --env-file .env --env-file deploy/de
 export NOTION_TEST_TOKEN=ntn_…            # scripts that submit jobs read the token from here
 ```
 
-Or run a whole round in one go: `scripts/demo/run-all.sh --fresh` (wipes the stack, starts it with the demo profile, runs every script and prints a PASS/FAIL summary).
+**This deletes local job and queue data.** To run a whole round on a fresh stack: `scripts/demo/run-all.sh --fresh` (wipes the stack, starts it with the demo profile, runs every script and prints a PASS/FAIL summary).
 
 | Script | Shows | Passes when |
 |---|---|---|
@@ -237,7 +620,12 @@ Or run a whole round in one go: `scripts/demo/run-all.sh --fresh` (wipes the sta
 | `too-long.sh <url>` | A video over 20 minutes | `FAILED VIDEO_TOO_LONG` before captions are fetched |
 | `scale.sh N` | Add or remove workers | `workers_alive = N` |
 
-## 9. Architecture and design choices
+</details>
+
+## Architecture and design choices
+
+<details>
+<summary>Expand architecture and design choices</summary>
 
 ```
  ┌──────────────────────── Chrome ─────────────────────────────────┐
@@ -285,34 +673,32 @@ The gateway only accepts and reports jobs; it never runs pipeline work. Each wor
 | LLM | Gemini Flash free tier behind a provider interface, with Groq/OpenRouter backups | Free and image-capable; the tight free limits show the rate limiter working. |
 | Notion token | Passed per job, AES-GCM encrypted in the broker, never stored | The gateway never keeps the token, and queued messages are safe at rest. |
 
-## 10. Troubleshooting
+</details>
 
-**"Sign in to confirm you're not a bot" (doctor or job logs).** YouTube is blocking requests from your network.
-1. Install a cookies.txt exporter in Chrome (for example "Get cookies.txt LOCALLY"), open youtube.com while signed in, and export `cookies.txt`.
-2. Save it as `.ytdlp/cookies.txt` in the repo (the folder is git-ignored and mounted into the workers).
-3. Add `YTDLP_COOKIES_FILE=/ytdlp/cookies.txt` to `.env`, then restart the workers: `docker compose -f deploy/docker-compose.yml --env-file .env up -d worker`.
+## Development and demos
 
-**Jobs keep waiting on `llm`, or the quota runs out.** The free tier allows few requests per day (20 for some models). The job waits and resumes when tokens come back; it doesn't fail. To keep going, switch `LLM_MODEL` or `LLM_PROVIDER`, or use another key; the fallback provider only covers outages. See "Free-tier limits differ per model" in §5. If `scripts/doctor.sh` reports "LLM key rejected", the key or `LLM_MODEL` itself is wrong.
+For local development, install Go and Node.js/npm compatible with the project. Integration tests require Docker; the lint script requires Bash.
 
-**Notion OAuth fails with a redirect mismatch.** The public integration's redirect URI must be exactly `https://lbmicegifohcileflpbjdanghkgigcia.chromiumapp.org/notion` and match `NOTION_REDIRECT_URI`. Restart the gateway after changing `.env`.
+Run backend checks:
 
-**`NOTION_NO_DESTINATION` or `NOTION_PARENT_NOT_FOUND`.** The page isn't shared with the connection. Open the page → **•••** (top-right of the page) → **Connections** → add the integration.
-
-**The extension can't reach the gateway.** Check `curl localhost:8080/healthz`. If you changed the extension's gateway URL in the popup's settings, it must match. `CORS_ALLOWED_ORIGINS` must contain `chrome-extension://lbmicegifohcileflpbjdanghkgigcia`.
-
-**Port already in use (8080, 5672 or 15672).** Stop the other program, or change the host side of the port mapping in `deploy/docker-compose.yml` (for example `"8081:8080"`) and point the extension at the new URL.
-
-**Start completely fresh.** `docker compose -f deploy/docker-compose.yml down -v` removes all jobs and queues.
-
-## Development
-
-```bash
+```sh
 go vet ./...
-go test ./...                            # unit tests
-go test -tags=integration -p 1 ./...     # integration tests (Docker must be running)
-bash scripts/lint.sh                     # the same linter as CI
-npm --prefix extension test && npm --prefix extension run build
-make up | make up-demo | make down | make logs
+go test ./...
+go test -tags=integration -p 1 ./...
+bash scripts/lint.sh
 ```
 
-The work was split into tasks in [`docs/tasks/`](docs/tasks/README.md). AI coding agents should read [`AGENTS.md`](AGENTS.md) first.
+Run extension checks:
+
+```sh
+npm --prefix extension ci
+npm --prefix extension test
+npm --prefix extension run build
+```
+
+Further documentation:
+
+- [System requirements and specification](https://github.com/Oct8Hacker/ai-note/blob/build/v1/docs/SRS.md)
+- [Demo runbook and failure scenarios](https://github.com/Oct8Hacker/ai-note/blob/build/v1/docs/demo-runbook.md)
+- [Task breakdown](https://github.com/Oct8Hacker/ai-note/blob/build/v1/docs/tasks/README.md)
+- [Instructions for coding agents](https://github.com/Oct8Hacker/ai-note/blob/build/v1/AGENTS.md)
