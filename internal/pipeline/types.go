@@ -22,12 +22,13 @@ const (
 	StatusCompletedWithWarnings Status = "COMPLETED_WITH_WARNINGS"
 	StatusFailed                Status = "FAILED"
 	StatusDeadLettered          Status = "DEAD_LETTERED"
+	StatusCancelled             Status = "CANCELLED"
 )
 
 // IsTerminal reports whether no further processing happens in this status.
 func (s Status) IsTerminal() bool {
 	switch s {
-	case StatusCompleted, StatusCompletedWithWarnings, StatusFailed, StatusDeadLettered:
+	case StatusCompleted, StatusCompletedWithWarnings, StatusFailed, StatusDeadLettered, StatusCancelled:
 		return true
 	}
 	return false

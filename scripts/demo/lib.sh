@@ -83,7 +83,7 @@ submit() {
 job_view() { curl -sS --fail "$GW/jobs/$1"; }
 job_status() { job_view "$1" | jq -r .status; }
 is_terminal() {
-  case "$1" in COMPLETED|COMPLETED_WITH_WARNINGS|FAILED|DEAD_LETTERED) return 0 ;; esac
+  case "$1" in COMPLETED|COMPLETED_WITH_WARNINGS|FAILED|DEAD_LETTERED|CANCELLED) return 0 ;; esac
   return 1
 }
 

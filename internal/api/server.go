@@ -17,6 +17,7 @@ import (
 
 // JobStore is the persistence surface the API needs.
 type JobStore interface {
+	CancelJob(ctx context.Context, id uuid.UUID) error
 	CreateJob(ctx context.Context, in jobs.NewJob, outboxPayload []byte) (pipeline.Job, bool, error)
 	GetJobView(ctx context.Context, id uuid.UUID) (jobs.JobView, error)
 }
@@ -53,6 +54,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /jobs", s.postJob)
 	mux.HandleFunc("GET /jobs/{job_id}", s.getJob)
+	mux.HandleFunc("POST /jobs/{job_id}/cancel", s.cancelJob)
 	mux.HandleFunc("GET /jobs/{job_id}/results", s.getResults)
 	s.registerAdmin(mux)
 	if s.deps.Notion != nil {

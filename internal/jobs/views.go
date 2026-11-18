@@ -30,6 +30,7 @@ type Result struct {
 
 // JobView is the public JSON shape of GET /jobs/{id}.
 type JobView struct {
+	CanCancel   bool               `json:"can_cancel"`
 	JobID       uuid.UUID          `json:"job_id"`
 	Status      pipeline.Status    `json:"status"`
 	Progress    int                `json:"progress"`

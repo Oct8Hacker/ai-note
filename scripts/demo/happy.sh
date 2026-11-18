@@ -55,7 +55,7 @@ while :; do
     last="$line"
   fi
   case "$status" in
-    COMPLETED|COMPLETED_WITH_WARNINGS|FAILED|DEAD_LETTERED) break ;;
+    COMPLETED|COMPLETED_WITH_WARNINGS|FAILED|DEAD_LETTERED|CANCELLED) break ;;
   esac
   if [ $(( $(date +%s) - start )) -ge "$timeout" ]; then
     echo "FAIL happy.sh: timed out after ${timeout}s in status $status" >&2

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"mime"
 	"net/http"
+	"slices"
 	"time"
 
 	"ainote/internal/jobs"
@@ -120,6 +121,30 @@ func (s *Server) getJob(w http.ResponseWriter, r *http.Request) {
 			v.Warnings = []pipeline.Warning{}
 		}
 		writeJSON(w, http.StatusOK, v)
+	}
+}
+
+func (s *Server) cancelJob(w http.ResponseWriter, r *http.Request) {
+	// A browser can send a bodyless POST without a CORS preflight.
+	if origin := r.Header.Get("Origin"); origin != "" && !slices.Contains(s.cfg.CORSAllowedOrigins, origin) {
+		WriteError(w, http.StatusForbidden, "ORIGIN_FORBIDDEN", "origin cannot cancel jobs")
+		return
+	}
+	id, err := uuid.Parse(r.PathValue("job_id"))
+	if err != nil {
+		WriteError(w, http.StatusNotFound, "JOB_NOT_FOUND", "job not found")
+		return
+	}
+	err = s.deps.Jobs.CancelJob(r.Context(), id)
+	switch {
+	case errors.Is(err, jobs.ErrNotFound):
+		WriteError(w, http.StatusNotFound, "JOB_NOT_FOUND", "job not found")
+	case errors.Is(err, jobs.ErrCancelTooLate):
+		WriteError(w, http.StatusConflict, "JOB_NOT_CANCELLABLE", "job has finished or Notion page creation has started")
+	case err != nil:
+		internalError(w, r, err)
+	default:
+		s.getJob(w, r)
 	}
 }
 

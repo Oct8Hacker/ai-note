@@ -58,6 +58,33 @@ func (f *fakeStore) GetJobView(_ context.Context, id uuid.UUID) (jobs.JobView, e
 
 type fakeKicker struct{ n int }
 
+func (f *fakeStore) CancelJob(_ context.Context, _ uuid.UUID) error {
+	f.calls++
+	if f.err == nil {
+		f.view.Status = pipeline.StatusCancelled
+	}
+	return f.err
+}
+
+func TestCancelJob(t *testing.T) {
+	path := "/jobs/" + uuid.NewString() + "/cancel"
+	store := &fakeStore{}
+	s, _, _ := newTestServer(t, store)
+	h := s.Handler()
+	rec := do(h, "POST", path, "", map[string]string{"Origin": "https://example.org"})
+	requireErr(t, rec, http.StatusForbidden, "ORIGIN_FORBIDDEN")
+	require.Zero(t, store.calls)
+	rec = do(h, "POST", path, "", map[string]string{"Origin": ext})
+	require.Equal(t, http.StatusOK, rec.Code)
+	var view jobs.JobView
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &view))
+	require.Equal(t, pipeline.StatusCancelled, view.Status)
+	store.err = jobs.ErrCancelTooLate
+	requireErr(t, do(h, "POST", path, "", nil), http.StatusConflict, "JOB_NOT_CANCELLABLE")
+	store.err = jobs.ErrNotFound
+	requireErr(t, do(h, "POST", path, "", nil), http.StatusNotFound, "JOB_NOT_FOUND")
+}
+
 func (k *fakeKicker) Kick() { k.n++ }
 
 const ext = "chrome-extension://abcdefghijklmnop"

@@ -188,10 +188,10 @@ func (rt *Runtime) Handle(ctx context.Context, d queue.Delivery) {
 	rt.settle(ctx, d, a, log)
 }
 
-// renewLoop extends the lease every LeaseTTL/3. If the lease is lost it flags
-// it and cancels the job's context so the stage stops.
+// renewLoop also detects user cancellation, which clears the durable lease.
+// Check at least once per second so a long TTL does not delay stage interruption.
 func (rt *Runtime) renewLoop(ctx context.Context, cancelRun context.CancelFunc, id uuid.UUID, lost *atomic.Bool, log *slog.Logger) {
-	t := time.NewTicker(max(rt.cfg.LeaseTTL/3, 10*time.Millisecond))
+	t := time.NewTicker(min(max(rt.cfg.LeaseTTL/3, 10*time.Millisecond), time.Second))
 	defer t.Stop()
 	for {
 		select {
@@ -220,6 +220,9 @@ func (rt *Runtime) process(ctx, runCtx context.Context, lost *atomic.Bool, d que
 		fctx, cancel := finishCtx()
 		defer cancel()
 		if err := rt.repo.Transition(fctx, id, pipeline.StatusTranscribing, rt.cfg.WorkerID, nil); err != nil {
+			if errors.Is(err, jobs.ErrIllegalTransition) {
+				return ack // cancelled or advanced after the claim
+			}
 			log.Error("transition to TRANSCRIBING failed", "err", err)
 			return nackInfra
 		}
@@ -234,7 +237,7 @@ func (rt *Runtime) process(ctx, runCtx context.Context, lost *atomic.Bool, d que
 		if ctx.Err() != nil {
 			return nack
 		}
-		if lost.Load() {
+		if lost.Load() || job.Status.IsTerminal() {
 			return ack
 		}
 		cur := job.Status
@@ -327,6 +330,9 @@ func (rt *Runtime) retry(d queue.Delivery, kind jobs.RetryKind, provider string,
 	fctx, cancel := finishCtx()
 	defer cancel()
 	dec, err := rt.repo.ScheduleRetry(fctx, d.Msg.JobID, kind, provider, rt.cfg.RetryDelays, retryAfter, budget, errCode)
+	if errors.Is(err, jobs.ErrIllegalTransition) {
+		return ack // the job became terminal before the retry could be recorded
+	}
 	if err != nil {
 		log.Error("schedule retry failed", "err", err)
 		return nackInfra
