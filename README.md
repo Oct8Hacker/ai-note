@@ -383,6 +383,22 @@ docker compose -f deploy/docker-compose.yml --env-file .env up -d --force-recrea
 
 Treat the cookies file as a secret. Do not share or commit it.
 
+### The page has notes but no screenshots (`FRAME_EXTRACTION_FAILED`)
+
+This is not the model's API limit. The job finished as `COMPLETED_WITH_WARNINGS`, and the warnings say every frame capture failed. The usual cause is that YouTube refuses direct access to that video's stream: ffmpeg gets **HTTP 403** for every format yt-dlp offers. The captions still work, so the notes are complete, but there are no frames to show.
+
+Some channels protect their streams this way and others don't. It depends on the video, not the topic. In our test (one video per channel, 18 Nov 2026):
+
+| Frames fail (403) | Frames work |
+|---|---|
+| TED, TED-Ed, Kurzgesagt | Khan Academy, MIT OpenCourseWare, NPTEL, CrashCourse, freeCodeCamp, Veritasium |
+
+Big, professionally produced channels were blocked. University lectures and tutorial channels worked. YouTube does not publish which videos are protected and changes it over time, so treat the table as a guide.
+
+The system does not fetch or generate a replacement image: every image must be a real frame from the video (Constraint B). It publishes the notes text-only and lists the warnings on the page. To get screenshots, use a lecture or tutorial video; `docs/test-videos.md` lists ones we have tested.
+
+You may also see `VISUAL_DROPPED_INVALID`. That means the model suggested a frame at a time past the end of the video. The system drops that frame instead of guessing.
+
 ### Notion OAuth reports a redirect mismatch
 
 The redirect registered in Notion must exactly match `NOTION_REDIRECT_URI`:
