@@ -202,6 +202,7 @@ README.md
 | `COMPLETED_WITH_WARNINGS` | Page published; ≥ 1 frame omitted or a non-fatal issue occurred | yes |
 | `FAILED` | Terminated by a non-retryable error | yes |
 | `DEAD_LETTERED` | Retry budget exhausted; routed to the DLQ | yes |
+| `CANCELLED` | User stopped the job before Notion page creation began | yes |
 
 ### 4.2 Transitions
 | From | To | Trigger |
@@ -214,6 +215,7 @@ README.md
 | `PUBLISHING` | `COMPLETED` / `COMPLETED_WITH_WARNINGS` | Page fully published; with-warnings if any frame omitted or warning recorded |
 | any non-terminal | `FAILED` | Non-retryable error |
 | any non-terminal | `DEAD_LETTERED` | Retry budget exhausted, or broker delivery limit exceeded |
+| any non-terminal, including a retry wait | `CANCELLED` | User cancellation wins the database lock before the first Notion page-creation checkpoint, and no page ID or URL is recorded |
 
 ```
             ┌────────┐ claim ┌──────────────┐ ok ┌─────────────┐ ok ┌───────────────────┐ ok ┌────────────┐
@@ -428,6 +430,7 @@ Optional header: `Idempotency-Key: <uuid>`.
 {
   "job_id": "8f9c1d2e-…",
   "status": "EXTRACTING_FRAMES",
+  "can_cancel": true,
   "progress": 68,
   "video_id": "dQw4w9WgXcQ",
   "video_title": "Lecture 4: Consensus",
@@ -450,6 +453,19 @@ While waiting for a retry:
 - **IR-API-12 (MUST)** Unknown or malformed `job_id` → `404 JOB_NOT_FOUND`.
 - **IR-API-13 (MUST)** `result` is populated (same object as `/results`) once the job is `COMPLETED`/`COMPLETED_WITH_WARNINGS`; `error` is `{code, message}` once `FAILED`/`DEAD_LETTERED`.
 - **IR-API-14 (COULD)** `?include=events` adds the `job_events` timeline.
+
+#### Cancel a job with `POST /jobs/{id}/cancel`
+
+Send an empty POST for the job UUID. The `can_cancel` field in the status response indicates eligibility at the time of polling. The gateway checks it again when processing the request. Cancellation is available during publishing preparation, including frame uploads, until the worker records its intent to create the Notion page.
+
+| Response | Meaning |
+|---|---|
+| `200 OK` | The current job view shows `CANCELLED`, `can_cancel: false`, and null `waiting`, `error`, and `result`. Repeating a successful request is idempotent. |
+| `404 JOB_NOT_FOUND` | The job ID is malformed or unknown. |
+| `409 JOB_NOT_CANCELLABLE` | Page creation has started, a page is already recorded, or the job finished in another terminal state. |
+| `403 ORIGIN_FORBIDDEN` | The request supplies a browser origin outside the gateway allowlist. |
+
+Cancellation clears the lease and retry state. A worker interrupts active work when it detects the lost lease. Late retry deliveries are acknowledged without restarting the job. The results endpoint returns `200` with status `CANCELLED`, warnings and a null result.
 
 ### 6.4 `GET /jobs/{job_id}/results` — fetch the outcome
 **Response — `200 OK`** (terminal job)

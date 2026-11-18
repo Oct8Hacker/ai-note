@@ -252,8 +252,6 @@ The Notion token goes into the extension popup, not into either of those fields.
 
 To stop a job, open the extension popup and click **Cancel** on its job card. You can cancel during processing or while waiting for a retry. Cancellation closes when the worker starts the request to create the Notion page. A cancelled job stays cancelled even when a delayed retry arrives.
 
-**Upgrading an existing installation:** stop all old workers, rebuild and start the workers and gateway from this version, then load the matching extension build. Every worker must understand the cancelled state before users can cancel jobs.
-
 Start with a short lecture or tutorial for your first test.
 
 Processing time depends on the video, model availability, and rate limits. A job waiting for quota may take longer than one that can run immediately.
