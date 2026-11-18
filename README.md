@@ -360,9 +360,11 @@ Then reopen or refresh the extension's destination picker.
 
 This also applies to `NOTION_NO_DESTINATION` and `NOTION_PARENT_NOT_FOUND` errors.
 
-### YouTube asks you to confirm you are not a bot
+### YouTube asks you to confirm you are not a bot, or subtitles fail with HTTP 429
 
-The workers may need cookies from your signed-in YouTube session.
+**First, turn off any VPN** (Cloudflare WARP / 1.1.1.1, a work VPN, a proxy). They send your traffic, including the workers', through addresses many people share, and YouTube limits those. Check with `curl -s https://www.cloudflare.com/cdn-cgi/trace | grep warp`: it should say `warp=off`. With WARP on, YouTube refused captions for over 12 hours during our testing; with it off, they worked at once.
+
+If it still happens on a plain home connection, the workers may need cookies from your signed-in YouTube session.
 
 1. Export YouTube cookies in Netscape `cookies.txt` format.
 2. Create a `.ytdlp` folder in the project folder.
