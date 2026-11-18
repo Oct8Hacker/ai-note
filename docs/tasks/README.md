@@ -39,4 +39,4 @@ Every open task is a GitHub issue (A6–A12 = #1–#7, B1–B16 = #8–#23, Z1�
 | [Z1](Z1.md) | Wire real stages; happy path end-to-end | A+B | 12 Nov (milestone), extension path 14 Nov | ✅ done |
 | [Z2](Z2.md) | Demo scripts and runbook | A+B | 16 Nov | ✅ done |
 | [Z3](Z3.md) | Setup tooling, README, release | A+B | 18 Nov | ✅ done |
-| [Z4](Z4.md) | Clean-machine rehearsal and acceptance | A+B | 19 Nov | ⏳ pending |
+| [Z4](Z4.md) | Clean-machine rehearsal and acceptance | A+B | 19 Nov | ✅ done |
