@@ -35,7 +35,8 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-var version = "dev"
+// version is reported by /healthz and logged at startup.
+var version = "1.0.0"
 
 func main() {
 	if err := run(); err != nil {

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "AI Note",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Turn YouTube videos into notes in Notion.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyXs8p4dnNDC4ETiS1H83vSDgmS07Mc8imhOpTZIOe3k2GX7bCNDpvuNgBvNpj5yOzfGSuU9c3Wq1OWD8ElRrUtXhu32LYihyI6hjETY3MoUVMUd2dHDr+fLENLSJwKKpo0cNIDS56mQJNtOwg+a3zQgSd4M+0F1V8D3Ig36/DWvLQQHYcl5setR2DBAKOPFgIKDxHESP0extrrSFig8JnqxH1VTofY0SEItkQhJ8hCoOcGNPf2jzVV7/Mv7x36a36EWSabsaKxBrUAIZpwvyFFyrjU2lFPs5nSmcnBsmwyK0I4c9/NrplcU4T4fVUmBDn4DOWBod9f18qlEkwXe4AwIDAQAB",
   "permissions": ["storage", "identity", "alarms", "notifications"],

@@ -56,7 +56,7 @@ Go tests are `package.TestName`; extension tests are `file › test`.
 | 43 | Every frame paired with an LLM caption | `publish.TestBlocksOrderAndCaptions`, `TestTextOnlyAndFrameGuards`; `frames.TestVerifyBatches` | ✅ test | |
 | 44 | Unpacked extension, one documented build command | CI `extension` job (`npm ci && npm run build`); README §3; release zip | ✅ test + 📄 doc | |
 | 45 | One compose file; `--scale worker=N`; stop/start containers | `scale.sh N`; `kill-worker.sh` | ✅ live | 2026-11-13 and 2026-11-17 demo round 1: `scale.sh 3` / `scale.sh 2` PASS; `kill-worker.sh` PASS; 2026-11-18 round 2: PASS |
-| 46 | README: base URL, default destination, every env var | README §2, §4, §5 | 📄 doc | |
+| 46 | README: base URL, default destination, every env var | README §2, §4, §5 | 📄 doc | 2026-11-18: base URL `http://localhost:8080` (setup step 6, API reference); "Default Notion destination" section; every variable read by `internal/config` is in the configuration reference (checked by script; `ANTHROPIC_API_KEY` added) |
 | 47 | Grader can run the whole stack from the README alone | Z4 steps 1–2 (≤ 15 min, Quick and Full OAuth modes) | 🔶 live | |
 | 48 | Health check of gateway, broker and state store | `health.TestCheckAllOK`, `TestCheckOneDown`; `api.TestHandler200`, `TestHandler503`; live: `health.sh` | ✅ test + ✅ live | 2026-11-17 and 2026-11-18: `health.sh` PASS in both demo rounds |
 | 49 | Client experience | Extension tests above; Z4 rehearsal | 🔶 live | |
@@ -64,7 +64,7 @@ Go tests are `package.TestName`; extension tests are `file › test`.
 | 51 | Burst drains without LLM 429s; each click an independent job | `jobs.TestCreateJobIdempotencyKey`, `TestTwoJobsSameVideo`; `worker.TestTwoJobsSameVideoIndependent`; `jobs.test.ts › … fresh idempotency key per click`; live: `burst.sh` | ✅ test + ✅ live | 2026-11-17 demo round 1: `burst.sh` 6/6 completed (3 videos × 2), no LLM 429; 2026-11-18 round 2: PASS (6/6, 0 LLM 429s) |
 | 52 | Recovery time and correctness after a worker kill | `worker.TestCrashRecovery`; live: `kill-worker.sh` (≤ 15 s, one page) | ✅ test + ✅ live | 2026-11-17 demo round 1: `kill-worker.sh` taken over in 6 s (progress moved at 28 s, after the next frame), one Notion page; 2026-11-18 round 2: PASS (taken over in 6 s, one page) |
 | 53 | Constraints A and B hold on held-out videos (LLM-as-judge) | Rows 41–43; live: inspect pages for videos #1–#3 | 🔶 live | |
-| 54 | Justify broker, state model, rate-limit coordination, topology, methods, tooling | README §9; SRS §19 | 📄 doc | |
+| 54 | Justify broker, state model, rate-limit coordination, topology, methods, tooling | README §9; SRS §19 | 📄 doc | 2026-11-18: README "Architecture and design choices" (diagram plus table: broker, job state, outbox, rate limits, retries, crash safety, frames, LLM, token handling); SRS §19 adds the topology choice and the alternatives considered for each |
 
 ## Open items to close before tagging v1.0.0
 
