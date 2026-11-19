@@ -16,6 +16,14 @@ jobs:
         with:
           version: v2.1.6
       - run: make test
+      - name: Ensure ffmpeg is available for frame integration tests
+        run: |
+          if ! command -v ffmpeg >/dev/null; then
+            python3 -m venv "$RUNNER_TEMP/frame-tools"
+            "$RUNNER_TEMP/frame-tools/bin/pip" install --only-binary=:all: imageio-ffmpeg==0.6.0
+            "$RUNNER_TEMP/frame-tools/bin/python" -c 'import imageio_ffmpeg, os, sys; os.symlink(imageio_ffmpeg.get_ffmpeg_exe(), sys.prefix + "/bin/ffmpeg")'
+            echo "$RUNNER_TEMP/frame-tools/bin" >> "$GITHUB_PATH"
+          fi
       - run: make test-integration
 
   extension:

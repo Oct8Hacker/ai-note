@@ -124,7 +124,7 @@ func (r *Repo) AddWarning(ctx context.Context, id uuid.UUID, w pipeline.Warning)
 		ts = &s
 	}
 	_, err = r.pool.Exec(ctx, `UPDATE jobs SET warnings = warnings || jsonb_build_array($2::jsonb), updated_at = now()
-		WHERE id = $1 AND NOT EXISTS (
+		WHERE id = $1 AND status <> 'CANCELLED' AND NOT EXISTS (
 			SELECT 1 FROM jsonb_array_elements(warnings) e
 			WHERE e->>'code' = $3 AND (e->'timestamp_sec') IS NOT DISTINCT FROM $4::jsonb)`,
 		id, string(b), w.Code, ts)

@@ -1,58 +1,188 @@
-// Command worker is a placeholder: it validates config, serves /healthz on
-// :8081 and logs a heartbeat. A later task replaces it with the real runtime.
+// Command worker consumes jobs.work and runs the pipeline stages for each job.
 package main
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
+	"math/rand"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+	amqp "github.com/rabbitmq/amqp091-go"
+	"github.com/redis/go-redis/v9"
+
 	"ainote/internal/config"
+	"ainote/internal/crypto"
+	"ainote/internal/doctor"
+	"ainote/internal/faults"
+	"ainote/internal/jobs"
+	"ainote/internal/llm"
 	"ainote/internal/logging"
+	"ainote/internal/notion"
+	"ainote/internal/queue"
+	"ainote/internal/ratelimit"
+	"ainote/internal/worker"
+	"ainote/internal/youtube"
 )
 
 func main() {
-	cfg, err := config.LoadWorker()
-	if err != nil {
-		slog.Error("worker config", "error", err)
+	if err := run(); err != nil {
+		slog.Error("worker failed", "error", err)
 		os.Exit(1)
 	}
-	log := logging.New(cfg.LogLevel, "worker")
-	host, _ := os.Hostname()
+}
 
+func run() error {
+	cfg, err := config.LoadWorker()
+	if err != nil {
+		return err
+	}
+	log := logging.New(cfg.LogLevel, "worker")
+	slog.SetDefault(log)
+	workerID, err := os.Hostname()
+	if err != nil {
+		return fmt.Errorf("hostname: %w", err)
+	}
+
+	// ctx is the shutdown signal. The heartbeat has its own context so this
+	// worker keeps looking alive while in-flight jobs finish their grace period.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	ropts, err := redis.ParseURL(cfg.RedisURL)
+	if err != nil {
+		return fmt.Errorf("redis url: %w", err)
+	}
+	rdb := redis.NewClient(ropts)
+	defer func() {
+		if err := rdb.Close(); err != nil {
+			log.Warn("redis close", "err", err)
+		}
+	}()
+
+	buckets, notionTmpl, daily := ratelimit.FromWorkerConfig(cfg)
+	limiter := ratelimit.New(rdb, buckets, notionTmpl, daily, cfg.LimiterMaxWait, time.Now)
+	controls := faults.New(rdb, cfg.Faults, rand.Float64)
+	text, vision, llmErr := llm.FromConfig(cfg, limiter, controls, func(ctx context.Context) { ratelimit.Incr429(ctx, rdb) })
+	if llmErr != nil {
+		log.Warn("doctor could not initialize model clients")
+	}
+	runner := youtube.ExecRunner{}
+	yt := youtube.NewClient(runner, limiter, controls, cfg.YtDlpCookiesFile)
+	checks := doctor.Checks{Text: text, Vision: vision, Runner: runner, YT: yt}
+	if len(os.Args) == 2 && os.Args[1] == "doctor" {
+		results := runDoctor(ctx, checks)
+		// OAuth is optional because users can paste an integration token.
+		oauth := "Disabled (integration token mode)"
+		if os.Getenv("NOTION_CLIENT_ID") != "" && os.Getenv("NOTION_CLIENT_SECRET") != "" && os.Getenv("NOTION_REDIRECT_URI") != "" {
+			oauth = "Configured"
+		}
+		results = append(results, doctor.Result{Name: "notion_oauth", OK: true, Detail: oauth})
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(results); err != nil {
+			return err
+		}
+		for _, result := range results {
+			if !result.OK {
+				return errors.New("worker preflight failed")
+			}
+		}
+		return nil
+	}
+	// Doctor mode reports a broken LLM setup; a real worker cannot run without one.
+	if llmErr != nil {
+		return fmt.Errorf("llm clients: %w", llmErr)
+	}
+	stages := realStages(cfg, yt, runner, text, vision,
+		notion.New("", cfg.NotionVersion, limiter, controls, nil))
+
+	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return fmt.Errorf("postgres: %w", err)
+	}
+	defer pool.Close()
+	repo := jobs.NewRepo(pool)
+	sealer, err := crypto.NewSealer(cfg.TokenEncKey)
+	if err != nil {
+		return fmt.Errorf("token sealer: %w", err)
+	}
+
+	top := queue.Topology{RetryDelays: cfg.RetryDelays, DeferDelay: cfg.DeferDelay}
+	mq, err := queue.Dial(ctx, cfg.AMQPURL, cfg.AMQPHeartbeat, log, func(ch *amqp.Channel) error {
+		return queue.Declare(ch, top)
 	})
-	srv := &http.Server{Addr: ":8081", Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	if err != nil {
+		return fmt.Errorf("rabbitmq: %w", err)
+	}
+	defer func() {
+		if err := mq.Close(); err != nil {
+			log.Warn("amqp close", "err", err)
+		}
+	}()
+
+	hbCtx, stopHeartbeat := context.WithCancel(context.WithoutCancel(ctx))
+	defer stopHeartbeat()
+	worker.StartHeartbeat(hbCtx, rdb, workerID, cfg.HeartbeatInterval, cfg.HeartbeatTTL)
+	doctorCtx, stopDoctor := context.WithCancel(ctx)
+	doctorDone := make(chan struct{})
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		defer close(doctorDone)
+		ticker := time.NewTicker(cfg.DoctorInterval)
+		defer ticker.Stop()
+		for {
+			results := runDoctor(doctorCtx, checks)
+			doctor.Publish(doctorCtx, rdb, workerID, results, 120*time.Second)
+			select {
+			case <-doctorCtx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
+	defer func() { stopDoctor(); <-doctorDone }()
+
+	health := worker.HealthServer(":8081")
+	go func() {
+		if err := health.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Error("health server", "error", err)
 			stop()
 		}
 	}()
+	defer func() {
+		sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = health.Shutdown(sctx)
+	}()
 
-	log.Info("worker started", "host", host)
-	t := time.NewTicker(cfg.HeartbeatInterval)
-	defer t.Stop()
-	for {
-		select {
-		case <-t.C:
-			log.Info("heartbeat", "host", host)
-		case <-ctx.Done():
-			log.Info("worker shutting down")
-			sctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			_ = srv.Shutdown(sctx)
-			return
-		}
-	}
+	rt := worker.New(worker.Config{
+		WorkerID:            workerID,
+		Prefetch:            cfg.WorkerConcurrency,
+		LeaseTTL:            cfg.LeaseTTL,
+		ShutdownGrace:       cfg.ShutdownGrace,
+		MaxAttempts:         cfg.MaxAttempts,
+		MaxRateLimitRetries: cfg.MaxRateLimitRetries,
+		MaxDeferrals:        cfg.MaxDeferrals,
+		DeliveryLimit:       cfg.DeliveryLimit,
+		RetryDelays:         cfg.RetryDelays,
+		DeferDelay:          cfg.DeferDelay,
+	}, repo, queue.NewPublisher(mq, top), rdb, sealer, stages, limiter, controls, log)
+
+	log.Info("worker started", "worker_id", workerID)
+	err = rt.Run(ctx, mq)
+	log.Info("worker stopped")
+	return err
+}
+
+func runDoctor(ctx context.Context, checks doctor.Checks) []doctor.Result {
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+	return doctor.Run(ctx, checks)
 }

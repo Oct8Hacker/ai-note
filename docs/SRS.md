@@ -202,6 +202,7 @@ README.md
 | `COMPLETED_WITH_WARNINGS` | Page published; ≥ 1 frame omitted or a non-fatal issue occurred | yes |
 | `FAILED` | Terminated by a non-retryable error | yes |
 | `DEAD_LETTERED` | Retry budget exhausted; routed to the DLQ | yes |
+| `CANCELLED` | User stopped the job before Notion page creation began | yes |
 
 ### 4.2 Transitions
 | From | To | Trigger |
@@ -214,6 +215,7 @@ README.md
 | `PUBLISHING` | `COMPLETED` / `COMPLETED_WITH_WARNINGS` | Page fully published; with-warnings if any frame omitted or warning recorded |
 | any non-terminal | `FAILED` | Non-retryable error |
 | any non-terminal | `DEAD_LETTERED` | Retry budget exhausted, or broker delivery limit exceeded |
+| any non-terminal, including a retry wait | `CANCELLED` | User cancellation wins the database lock before the first Notion page-creation checkpoint, and no page ID or URL is recorded |
 
 ```
             ┌────────┐ claim ┌──────────────┐ ok ┌─────────────┐ ok ┌───────────────────┐ ok ┌────────────┐
@@ -306,8 +308,8 @@ All stages run in the worker. Each stage is **idempotent**: re-running it after 
 
 #### 5.3.3 Stage 3 — Frame extraction (`EXTRACTING_FRAMES`)
 - **FR-PIPE-20 (MUST)** Resolves a direct stream URL (`yt-dlp -g`, ≤ 720p video-only or muxed mp4) once per stage run (URLs expire; never cached across runs).
-- **FR-PIPE-20a (MUST) — Stream throttling is a YouTube 429.** Every ffmpeg read of the stream acquires a token from the `youtube` bucket first. If ffmpeg's stderr shows HTTP 429 or 403 from the stream host, the capture is **not** treated as a frame failure: the stage stops and returns `RateLimited{provider: "youtube"}` so the job waits and retries (already-captured frames are kept by checkpoint). Only other capture errors become `FRAME_EXTRACTION_FAILED`.
-- **FR-PIPE-21 (MUST)** For each visual moment, seeks to the timestamp and captures **one frame directly from the video stream** with ffmpeg (`ffmpeg -ss <t> -i <url> -frames:v 1 -q:v 2 out.jpg`, input-seeking for speed). Frames are processed with bounded concurrency `FRAME_CONCURRENCY` (default 4) and a per-frame timeout `FRAME_TIMEOUT` (default 30 s).
+- **FR-PIPE-20a (MUST) — Stream throttling is a YouTube 429; a refused URL is not.** Every ffmpeg read of the stream acquires a token from the `youtube` bucket first and sends a browser User-Agent (YouTube's video servers refuse ffmpeg's default agent for some videos). If ffmpeg's stderr shows **HTTP 429**, the capture is not treated as a frame failure: the stage stops and returns `RateLimited{provider: "youtube"}` so the job waits and retries (already-captured frames are kept by checkpoint). If it shows **HTTP 403** (the host refused that URL), the stage fetches a fresh stream URL and retries, at most 3 times per stage run; a 403 after that fails only that frame (`FRAME_EXTRACTION_FAILED`), so the page still publishes. All other capture errors also become `FRAME_EXTRACTION_FAILED`.
+- **FR-PIPE-21 (MUST)** For each visual moment, seeks to the timestamp and captures **one frame directly from the video stream** with ffmpeg (`ffmpeg -ss <t> -i <url> -frames:v 1 -q:v 2 out.jpg`, input-seeking for speed). Frames are processed with bounded concurrency `FRAME_CONCURRENCY` (default 4) and a timeout `FRAME_TIMEOUT` (default 30 s) on each ffmpeg call; time spent waiting for `youtube` tokens is not counted, so frames of concurrent jobs wait for the shared bucket instead of failing.
 - **FR-PIPE-22 (SHOULD) — Slide snap.** Runs ffmpeg scene detection in a window `[t − 2 s, t + 2 s]` (`select='gt(scene,SCENE_THRESHOLD)'`); if a scene change is found, captures ~0.5 s after the change nearest to `t` (avoids mid-transition frames).
 - **FR-PIPE-23 (SHOULD) — Sharpness pick.** Captures up to 3 candidates around the chosen time (±0.5 s) and keeps the sharpest (variance of a gradient/Laplacian filter computed in Go).
 - **FR-PIPE-23a (MUST) — Timestamp fidelity (Constraint B).** All adjustments (snap, sharpness, the verification retry in FR-PIPE-24) keep the captured frame within **`MAX_FRAME_DRIFT_SEC` (default 3 s)** of the LLM-identified timestamp. The actual capture time is stored as `captured_sec`, and **captions, timestamp links, and `warnings[].timestamp_sec` always use `captured_sec`**, so every image is labelled with the exact moment it was taken from. The LLM-identified time is kept as `requested_sec` for debugging.
@@ -428,6 +430,7 @@ Optional header: `Idempotency-Key: <uuid>`.
 {
   "job_id": "8f9c1d2e-…",
   "status": "EXTRACTING_FRAMES",
+  "can_cancel": true,
   "progress": 68,
   "video_id": "dQw4w9WgXcQ",
   "video_title": "Lecture 4: Consensus",
@@ -450,6 +453,19 @@ While waiting for a retry:
 - **IR-API-12 (MUST)** Unknown or malformed `job_id` → `404 JOB_NOT_FOUND`.
 - **IR-API-13 (MUST)** `result` is populated (same object as `/results`) once the job is `COMPLETED`/`COMPLETED_WITH_WARNINGS`; `error` is `{code, message}` once `FAILED`/`DEAD_LETTERED`.
 - **IR-API-14 (COULD)** `?include=events` adds the `job_events` timeline.
+
+#### Cancel a job with `POST /jobs/{id}/cancel`
+
+Send an empty POST for the job UUID. The `can_cancel` field in the status response indicates eligibility at the time of polling. The gateway checks it again when processing the request. Cancellation is available during publishing preparation, including frame uploads, until the worker records its intent to create the Notion page.
+
+| Response | Meaning |
+|---|---|
+| `200 OK` | The current job view shows `CANCELLED`, `can_cancel: false`, and null `waiting`, `error`, and `result`. Repeating a successful request is idempotent. |
+| `404 JOB_NOT_FOUND` | The job ID is malformed or unknown. |
+| `409 JOB_NOT_CANCELLABLE` | Page creation has started, a page is already recorded, or the job finished in another terminal state. |
+| `403 ORIGIN_FORBIDDEN` | The request supplies a browser origin outside the gateway allowlist. |
+
+Cancellation clears the lease and retry state. A worker interrupts active work when it detects the lost lease. Late retry deliveries are acknowledged without restarting the job. The results endpoint returns `200` with status `CANCELLED`, warnings and a null result.
 
 ### 6.4 `GET /jobs/{job_id}/results` — fetch the outcome
 **Response — `200 OK`** (terminal job)
@@ -494,6 +510,9 @@ GET /notion/pages   Authorization: Bearer <notion_token>
 | `JOB_NOT_FOUND` | 404 | Unknown job |
 | `JOB_NOT_FINISHED` | 409 | Results requested before terminal |
 | `UNAUTHORIZED` | 401 | Missing/invalid admin token |
+| `INVALID_LIMIT` | 400 | `GET /admin/dlq` `limit` is not a positive integer |
+| `JOB_NOT_DEAD_LETTERED` | 409 | Replay requested for a job that is not `DEAD_LETTERED` |
+| `INVALID_FAULTS` | 400 | `PUT /admin/faults` has an unknown key or an out-of-range / malformed value |
 | `INTERNAL` | 500 | Unexpected error (details only in logs) |
 
 **Job error codes** (`error.code` on `FAILED` / `DEAD_LETTERED`)
@@ -523,7 +542,7 @@ Informational notes that do **not** trigger with-warnings are kept in `job_event
 
 ### 6.7 `GET /healthz`
 ```json
-200 {"status": "ok", "checks": {"postgres": "ok", "rabbitmq": "ok", "redis": "ok"}, "workers_alive": 2, "version": "1.0.0"}
+200 {"status": "ok", "checks": {"postgres": "ok", "rabbitmq": "ok", "redis": "ok"}, "workers_alive": 2, "version": "1.1.0"}
 503 {"status": "degraded", "checks": {"postgres": "ok", "rabbitmq": "error: connection refused", "redis": "ok"}, "workers_alive": 0}
 ```
 - **IR-API-30 (MUST)** Returns `200` only if Postgres (`SELECT 1`), RabbitMQ (channel open + passive declare of `jobs.work`), and Redis (`PING`) are all reachable within 2 s; else `503`.
@@ -754,7 +773,7 @@ Synthetic 429s go through exactly the same code path as real ones. Fault injecti
 | `llm:tokens` | `LLM_TPM` (default 200 000/min) — estimated input + max output tokens | global |
 | `llm:daily` | `LLM_RPD` (default **200**; set to ≈ 80 % of the provider's daily quota shown in its console, `0` = off only for Ollama) | global, resets at the provider's reset time (configurable `LLM_RPD_RESET_TZ`, default Pacific time for Gemini) |
 | `notion:{hash(token)}` | `NOTION_RPS` (default 2.5/s; Notion allows ~3/s average) | per integration token |
-| `youtube` | `YOUTUBE_RPS` (default 1/s) | global |
+| `youtube` | `YOUTUBE_RPS` (default 4/s, burst of one second) | global |
 
 - **FR-RL-3 (MUST)** Before every external call, the caller acquires tokens. If the wait is ≤ `LIMITER_MAX_WAIT` (default 60 s), it blocks (context-cancellable). If longer, the stage returns a local `RateLimited{provider, retry_after}`, which goes through the normal rate-limit retry path — the worker is freed for other work and the user sees "waiting".
 - **FR-RL-4 (MUST)** Goal (source spec §9): a burst of ≥ 6 jobs drains **without a single 429 from the LLM provider** — per-minute *or* daily — under the configured limits. Each job uses at most `chunks + 2` LLM calls (synthesis + up to two batched verifications), so a 6-job burst needs ≈ 12–20 calls. Every real provider 429 is counted (`provider_429_total`, shown in `GET /healthz` details) so this can be proven in the demo.
@@ -907,12 +926,12 @@ All configuration is via environment variables (`.env`, documented in `.env.exam
 | `LLM_MAX_INPUT_TOKENS` | `6000` | worker | Chunking threshold |
 | `LLM_TIMEOUT` | `90s` | worker | Per-call timeout |
 | `LIMITER_MAX_WAIT` | `60s` | worker | Block vs. requeue threshold |
-| `YOUTUBE_RPS` | `1` | worker | yt-dlp rate limit |
+| `YOUTUBE_RPS` | `4` | worker | YouTube rate limit (yt-dlp calls and ffmpeg stream reads) |
 | `YTDLP_COOKIES_FILE` | empty | worker | Optional cookies if YouTube blocks requests |
 | `MAX_VIDEO_SECONDS` | `1200` | worker, extension | Constraint A |
 | `MAX_FRAMES` | `8` | worker | Frame cap |
 | `FRAME_CONCURRENCY` | `4` | worker | Parallel frame captures |
-| `FRAME_TIMEOUT` | `30s` | worker | Per-frame timeout |
+| `FRAME_TIMEOUT` | `30s` | worker | Timeout per ffmpeg call (token waits excluded) |
 | `FRAME_VERIFY` | `true` | worker | Verification on/off |
 | `SCENE_THRESHOLD` | `0.3` | worker | Slide-snap sensitivity |
 | `MAX_FRAME_DRIFT_SEC` | `3` | worker | Max distance of captured frame from LLM timestamp |

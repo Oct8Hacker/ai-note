@@ -38,10 +38,17 @@ services:
     restart: unless-stopped
 
   gateway:
+    # Prebuilt release image (FR-SETUP-4); compose builds from source when it
+    # can't pull it, and `up --build` always builds locally.
+    image: ghcr.io/oct8hacker/ainote-gateway:${AINOTE_TAG:-latest}
     build:
       context: ..
       dockerfile: deploy/gateway.Dockerfile
     env_file: ../.env
+    environment:
+      # Defaults match internal/config; deploy/demo.env overrides them.
+      RETRY_DELAYS: ${RETRY_DELAYS:-10s,30s,90s,270s}
+      FAULT_STAGE_DELAY_MS: ${FAULT_STAGE_DELAY_MS:-0}
     ports:
       - "8080:8080"
     depends_on:
@@ -57,10 +64,21 @@ services:
     restart: unless-stopped
 
   worker:
+    # Prebuilt release image (FR-SETUP-4); compose builds from source when it
+    # can't pull it, and `up --build` always builds locally.
+    image: ghcr.io/oct8hacker/ainote-worker:${AINOTE_TAG:-latest}
     build:
       context: ..
       dockerfile: deploy/worker.Dockerfile
     env_file: ../.env
+    environment:
+      # Defaults match internal/config; deploy/demo.env overrides them.
+      RETRY_DELAYS: ${RETRY_DELAYS:-10s,30s,90s,270s}
+      FAULT_STAGE_DELAY_MS: ${FAULT_STAGE_DELAY_MS:-0}
+    volumes:
+      # Optional YouTube cookies for bot checks: put cookies.txt in .ytdlp/ and
+      # set YTDLP_COOKIES_FILE=/ytdlp/cookies.txt (README -> Troubleshooting).
+      - ../.ytdlp:/ytdlp
     deploy:
       replicas: 2
     depends_on:

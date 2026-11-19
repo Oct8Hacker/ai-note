@@ -28,15 +28,17 @@ func TestLoadWorkerDefaults(t *testing.T) {
 	assert.Equal(t, 1200, w.MaxVideoSeconds)
 	assert.Equal(t, 8, w.LLMRPM)
 	assert.Equal(t, 200, w.LLMRPD)
+	assert.Equal(t, 4.0, w.YouTubeRPS)
 	assert.Equal(t, 3*time.Second, w.DeferDelay)
 	assert.Equal(t, 3.0, w.MaxFrameDriftSec)
 	assert.Equal(t, "gemini", w.LLMProvider)
-	assert.Equal(t, "gemini-2.5-flash", w.LLMModel)
+	assert.Equal(t, "gemini-3.8-flash", w.LLMModel)
 	assert.Equal(t, "gemini", w.LLMVisionProvider)
-	assert.Equal(t, "gemini-2.5-flash", w.LLMVisionModel)
+	assert.Equal(t, "gemini-3.8-flash", w.LLMVisionModel)
 	assert.Equal(t, 2*time.Second, w.HeartbeatInterval)
 	assert.Equal(t, 6*time.Second, w.HeartbeatTTL)
 	assert.Equal(t, 60*time.Second, w.DoctorInterval)
+	assert.Equal(t, 50*time.Minute, w.NotionUploadReuseWindow)
 	assert.Equal(t, 0.0, w.Faults.LLM429Rate)
 	assert.False(t, w.Faults.FrameFailAll)
 }
@@ -87,6 +89,16 @@ func TestBadRetryDelays(t *testing.T) {
 	_, err = LoadWorker()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "RETRY_DELAYS")
+}
+
+func TestFractionalRetryDelaysRejected(t *testing.T) {
+	workerEnv(t)
+	for _, v := range []string{"10s,500ms", "1500ms", "10s,1.5s"} {
+		t.Setenv("RETRY_DELAYS", v)
+		_, err := LoadWorker()
+		require.Error(t, err, v)
+		assert.Contains(t, err.Error(), "RETRY_DELAYS")
+	}
 }
 
 func TestParseDurations(t *testing.T) {

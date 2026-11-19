@@ -1,0 +1,74 @@
+# Acceptance — SRS Appendix A walk-through (Z4 step 3)
+
+Every source-spec requirement from [SRS Appendix A](SRS.md#appendix-a--requirements-traceability-matrix), with what proves it. Any row that ends ❌ blocks the release.
+
+**Status key**
+- ✅ **test**: proven by an automated test that runs in CI. ✅ **live**: a live check has passed (see Evidence).
+- 🔶 **live**: needs the running stack. Proven by the named demo script or check during the Z1 live run, the Z2 double run or the Z4 rehearsal. Write the date and result in the Evidence column.
+- 📄 **doc**: proven by documentation; checked in the clean-machine rehearsal.
+
+Go tests are `package.TestName`; extension tests are `file › test`.
+
+| # | Requirement (source spec) | Proof | Status | Evidence |
+|---|---|---|---|---|
+| 1 | Video → summarised notes + real frames, published to Notion | `happy.sh` on test videos #1–#3 (`docs/test-videos.md`) | ✅ live | 2026-11-16: `happy.sh` on video #1 `COMPLETED`, 8/8 frames, page published |
+| 2 | Driven entirely from the extension | Z1 step 5 (Take Notes → View in Notion); `jobs.test.ts › takeNotes …` | ✅ live | 2026-11-16: Take Notes in Chrome on video #1 → `COMPLETED`, 7/7 frames, 90 s, no warnings |
+| 3 | Queue-backed worker pool | `worker.TestHappyPathFakeStages`, `queue.TestPublishConfirmed` | ✅ test | |
+| 4 | Respect every external API's rate limits | `ratelimit.TestSharedAcrossClients`, `TestBucketRate`, `TestDailyCap`, `TestNotionTemplate`; `notion.TestLimiterBucketPerToken`; `llm.TestGuardedFallbackAndBuckets`; live: `burst.sh` | ✅ test + ✅ live | 2026-11-17 demo round 1: `burst.sh` 6/6 completed, `provider_429_total` unchanged (0); 2026-11-18 round 2: PASS (6/6, 0 LLM 429s) |
+| 5 | Four separate containers; kill or scale one without touching others | `deploy/docker-compose.yml`; `scale.sh 3`, `kill-worker.sh` | ✅ live | 2026-11-17 demo round 1: `scale.sh 3` and `scale.sh 2` PASS; `kill-worker.sh` killed one worker, the others kept running; 2026-11-18 round 2: PASS |
+| 6 | Gateway accepts jobs and reports status, does no pipeline work | `api.TestPostJobNoExternalCalls`, `TestPostJobAccepted` | ✅ test | |
+| 7 | Durable queue, at-least-once, redelivery on crash | `queue.TestUnackedRedeliveredOnConnClose`, `TestReconnectAfterForcedClose`, `TestDeclareTwice`; `worker.TestCrashRecovery` | ✅ test | |
+| 8 | ≥ 2 independent workers | Compose `deploy.replicas: 2`; `health.sh` (`workers_alive ≥ 2`) | ✅ live | 2026-11-13: `health.sh` PASS, `workers_alive=2` |
+| 9 | Take Notes button injected on watch pages | `button.test.ts › ensureButton is idempotent and requires a toolbar` | ✅ test | |
+| 10 | Click captures the current video ID → background | `button.test.ts › reads the current ID at click time …` | ✅ test | |
+| 11 | Keeps working across video-to-video navigation | `button.test.ts › reattaches once when a toolbar or the entire player is replaced`, `› ignores a late acknowledgment after navigating …` | ✅ test | |
+| 12 | One-time Notion OAuth, token stored, no re-prompt | `auth.test.ts › connectWithOAuth …`, `› rejects an OAuth response with an unrelated state`; `api.TestExchangeOK`, `TestExchangeRejectsForeignRedirect`; live: Mode B in Z4 step 2 | ✅ test + ✅ live | 2026-11-18 Z4 rehearsal (Om, clean machine, README only): Full OAuth mode connected Notion once and published a page; first page 13 min after clone |
+| 13 | Background submits jobs and relays status | `jobs.test.ts › takeNotes uses a fresh idempotency key per click …`; `poller.test.ts › pollOnce saves progress …` | ✅ test | |
+| 14 | Popup shows Queued → … → Done | `JobCard.test.tsx › StepTracker highlights the current step …` | ✅ test | |
+| 15 | One-click "View in Notion" | Z1 step 5 | ✅ live | 2026-11-16: popup showed the steps and View in Notion (video #1 from the extension) |
+| 16 | Failures and warnings shown clearly, never raw JSON | `shared.test.ts › errorMessage handles unknown codes`, `› summarizeWarnings …`; `publish.TestWarningCalloutPlainWords` | ✅ test | |
+| 17 | Timestamped transcript, true duration, Constraint A | `transcript.TestParseJSON3Manual`, `TestCleanAutoCaptions`, `TestTooLongRejectedBeforeCaptions`, `TestNoCaptions`; `youtube.TestMetadataParses` | ✅ test | |
+| 18 | LLM summary bullets + timestamps of key visuals | `synthesis.TestStageShortVideoAndRepair`, `TestValidateDropsBadVisuals` | ✅ test | |
+| 19 | Each flagged timestamp has a caption (what + why) | `synthesis.TestValidateDropsBadVisuals`; `pipeline.TestSynthesisJSONTags` | ✅ test | |
+| 20 | Chunk long transcripts, merge in order | `synthesis.TestChunkSplitsWithOverlap`, `TestMergeKeepsOrder`, `TestStageResumesFromChunkCheckpoint` | ✅ test | |
+| 21 | Seek to each timestamp, capture one frame from the stream | `frames.TestCaptureRealFrame`, `TestChooseTime`, `TestSceneChangeDetected`; `youtube.TestStreamURL` | ✅ test | |
+| 22 | Upload frames; page with headings, bullets, captioned images | `publish.TestBlocksOrderAndCaptions`, `TestUploadsReusedOrRenewed`; `notion.TestUploadImageTwoStep`, `TestAppendBatches`; live: `happy.sh` | ✅ test + ✅ live | 2026-11-16: page with headings, bullets and 8 captioned frames published (video #1) |
+| 23 | Status set with the stated meanings | `pipeline.TestStatusOrder`; `jobs.TestAllowedTransitions` | ✅ test | |
+| 24 | Transition table | `jobs.TestAllowedTransitions`, `TestTransition`, `TestFailFromTerminalRejected` | ✅ test | |
+| 25 | `POST /jobs` shape, 202 + `Location` | `api.TestPostJobAccepted` | ✅ test | |
+| 26 | Validates the URL, returns immediately, no pipeline work | `api.TestPostJobErrors`, `TestParseVideoID`, `TestPostJobNoExternalCalls` | ✅ test | |
+| 27 | Invalid input → 4xx with `{"error":{code,message}}` | `api.TestPostJobErrors`, `TestUnknownRouteAndMethod` | ✅ test | |
+| 28 | Notion token per submission, never stored | `api.TestNoTokenInLogs`; `crypto.TestSealRoundTrip`; `worker.TestNotionTokenOnlyForPublishing`; `logging.TestRedacts` | ✅ test | |
+| 29 | Omitted parent → default destination, stated in the README | `publish.TestResolveDestinations`; README §4 | ✅ test + 📄 doc | |
+| 30 | `GET /jobs/{id}` shape | `api.TestGetJob`; `jobs.TestWarningsNeverNull` | ✅ test | |
+| 31 | Polling is read-only; unknown ID → 404 | `jobs.TestGetJobViewIsReadOnly`; `api.TestGetJobUnknown` | ✅ test | |
+| 32 | `GET /jobs/{id}/results` shape | `api.TestResultsCompleted`, `TestResultsFailed` | ✅ test | |
+| 33 | Results before terminal → 409 | `api.TestResultsBeforeTerminal`; `shared.test.ts › getResults maps 409 to NOT_FINISHED` | ✅ test | |
+| 34 | Success returns a working absolute Notion URL | `happy.sh` (open the printed URL) | ✅ live | 2026-11-16: `happy.sh` returned a working Notion URL (video #1) |
+| 35 | 429s from any API re-queued with backoff; user sees waiting | `worker.TestRateLimitedDoesNotSpendFailureBudget`; `ratelimit.TestMaxWaitReturnsRateLimited`; `frames.TestThrottleDuringVerificationRetry`; `JobCard.test.tsx` (countdown); live: `force-429.sh llm\|notion\|youtube` | ✅ test + ✅ live | 2026-11-17 demo round 1: `force-429.sh` llm, notion and youtube each PASS (job waited on 429s, then COMPLETED); 2026-11-18 round 2: PASS |
+| 36 | Worker crash → reassigned, no job lost or duplicated on Notion | `worker.TestCrashRecovery`, `TestDuplicateDeliveryDefers`; `jobs.TestClaimDeadOwnerImmediately`; `publish.TestAdoptsAfterCrashWindow`; live: `kill-worker.sh` | ✅ test + ✅ live | 2026-11-17 demo round 1: `kill-worker.sh` PASS, another worker took over 6 s after SIGKILL, job COMPLETED, exactly one Notion page; 2026-11-18 round 2: PASS (taken over in 6 s, one page) |
+| 37 | Ack only after durable completion; idempotent redelivery | `jobs.TestCompleteStageAtomic`; `publish.TestContentConvergesAfterPartialWrite`; `outbox.TestRelayNoDoublePublishConcurrent` | ✅ test | |
+| 38 | Partial frame failure → text + good frames, `COMPLETED_WITH_WARNINGS` | `frames.TestCaptureFailures`; `jobs.TestPublishCompletesWithWarnings`; live: `frames-fail.sh` | ✅ test + ✅ live | 2026-11-17 demo round 1: `frames-fail.sh` PASS (partial failure → `COMPLETED_WITH_WARNINGS`); 2026-11-18 round 2: PASS |
+| 39 | All frames fail → text-only page | `publish.TestTextOnlyAndFrameGuards`; `faults.TestFrameFailAll`; live: `frames-fail.sh` | ✅ test + ✅ live | 2026-11-17 demo round 1: `frames-fail.sh` PASS (all frames fail → text-only page); 2026-11-18 round 2: PASS |
+| 40 | DLQ after bounded, configurable attempts; quick to demonstrate | `worker.TestDeadLetterAfterBudget`; `queue.TestDeliveryLimitDeadLetters`; `dlqwatch.TestWatcherMarksDeliveryLimit`; `api.TestListDLQ`, `TestReplayRequeues`; live: `dlq.sh` | ✅ test + ✅ live | 2026-11-13: `dlq.sh` PASS with an unavailable video ID, `DEAD_LETTERED` after 56 s (limit 60 s; tight margin) |
+| 41 | ≤ 20 min supported, longer rejected deterministically | `transcript.TestTooLongRejectedBeforeCaptions`; `button.test.ts › precheckDuration rejects long videos inline …`; live: `too-long.sh` | ✅ test + ✅ live | 2026-11-13: `too-long.sh` PASS on a 61-min lecture (6FkRvTtUc-o), `FAILED VIDEO_TOO_LONG` 4 s after submit |
+| 42 | Every image is a real frame at the identified time; never generated or substituted | `frames.TestCaptureRealFrame`, `TestDriftNeverExceeded`; `publish.TestTextOnlyAndFrameGuards` | ✅ test | |
+| 43 | Every frame paired with an LLM caption | `publish.TestBlocksOrderAndCaptions`, `TestTextOnlyAndFrameGuards`; `frames.TestVerifyBatches` | ✅ test | |
+| 44 | Unpacked extension, one documented build command | CI `extension` job (`npm ci && npm run build`); README §3; release zip | ✅ test + 📄 doc | |
+| 45 | One compose file; `--scale worker=N`; stop/start containers | `scale.sh N`; `kill-worker.sh` | ✅ live | 2026-11-13 and 2026-11-17 demo round 1: `scale.sh 3` / `scale.sh 2` PASS; `kill-worker.sh` PASS; 2026-11-18 round 2: PASS |
+| 46 | README: base URL, default destination, every env var | README §2, §4, §5 | ✅ doc | 2026-11-18: base URL `http://localhost:8080` (setup step 6, API reference); "Default Notion destination" section; every variable read by `internal/config` is in the configuration reference (checked by script; `ANTHROPIC_API_KEY` added) |
+| 47 | Grader can run the whole stack from the README alone | Z4 steps 1–2 (≤ 15 min, Quick and Full OAuth modes) | ✅ live | 2026-11-18 Z4 rehearsal (Om, clean machine, README only): Quick mode 11 min, Full OAuth mode 13 min from clone to first page; no friction points reported |
+| 48 | Health check of gateway, broker and state store | `health.TestCheckAllOK`, `TestCheckOneDown`; `api.TestHandler200`, `TestHandler503`; live: `health.sh` | ✅ test + ✅ live | 2026-11-17 and 2026-11-18: `health.sh` PASS in both demo rounds |
+| 49 | Client experience | Extension tests above; Z4 rehearsal | ✅ test + ✅ live | 2026-11-18 Z4 rehearsal (Om, clean machine, README only): set up and published from the extension in both modes; demo rounds 1–2 drove it too |
+| 50 | End-to-end latency near the 20-min cap | `happy.sh` on video #3, time recorded in `docs/test-videos.md` (target ≤ 90 s) | ✅ live | 2026-11-16: video #3 (17:52) `COMPLETED` in 110 s, 8/8 frames, no warnings (extension); video #1 (5:55) in 80 s. Over the 90 s SHOULD target, inside NFR-PERF-2's 3 min bound; frame capture is ~70 % of the time |
+| 51 | Burst drains without LLM 429s; each click an independent job | `jobs.TestCreateJobIdempotencyKey`, `TestTwoJobsSameVideo`; `worker.TestTwoJobsSameVideoIndependent`; `jobs.test.ts › … fresh idempotency key per click`; live: `burst.sh` | ✅ test + ✅ live | 2026-11-17 demo round 1: `burst.sh` 6/6 completed (3 videos × 2), no LLM 429; 2026-11-18 round 2: PASS (6/6, 0 LLM 429s) |
+| 52 | Recovery time and correctness after a worker kill | `worker.TestCrashRecovery`; live: `kill-worker.sh` (≤ 15 s, one page) | ✅ test + ✅ live | 2026-11-17 demo round 1: `kill-worker.sh` taken over in 6 s (progress moved at 28 s, after the next frame), one Notion page; 2026-11-18 round 2: PASS (taken over in 6 s, one page) |
+| 53 | Constraints A and B hold on held-out videos (LLM-as-judge) | Rows 41–43; live: inspect pages for videos #1–#3 | ✅ test + ✅ live | 2026-11-18: Aryan inspected 3–4 published Notion pages: every image is a real frame from its video, each with a caption saying what it shows and why. A TED-Ed video whose stream returned 403 published text-only with `FRAME_EXTRACTION_FAILED` warnings; no image was substituted |
+| 54 | Justify broker, state model, rate-limit coordination, topology, methods, tooling | README §9; SRS §19 | ✅ doc | 2026-11-18: README "Architecture and design choices" (diagram plus table: broker, job state, outbox, rate limits, retries, crash safety, frames, LLM, token handling); SRS §19 adds the topology choice and the alternatives considered for each |
+| 55 | Cancel a job until Notion page creation starts (added in v1.1.0, not in the source spec; SRS §4.1–4.2 and "Cancel a job with `POST /jobs/{id}/cancel`") | `jobs.TestCancelJob`, `TestCancelEligibility`, `TestCancelRacesStartOfPageCreation`, `TestCancelledJobRejectsStaleCheckpoints`, `TestMigrateCancelled`; `api.TestCancelJob`; `worker.TestCancelInterruptsStageAndAcknowledgesRedelivery`; `publish.TestCancelledCreateCheckpointPreventsNotionPage`; `poller.test.ts`, `JobCard.test.tsx` cancellation tests; live: demo runbook step 12 | ✅ test + ✅ live | 2026-11-19, merged build, from the extension: (1) cancelled while Transcribing → `CANCELLED`, lease cleared, no page; the worker logged `lease lost, abandoning job` 13 ms later and ran no further stage. (2) Cancelled while Queued with the workers stopped → `QUEUED → CANCELLED`; after restart the worker acked its message as `nothing to do`, no stage ran. (3) `POST /jobs/{id}/cancel` 0.5 s after page creation started → `409 JOB_NOT_CANCELLABLE`; the job completed with one page, 8/8 frames. Gateway checks: foreign Origin → 403, unknown job → 404, finished job → 409 |
+
+## Open items to close before tagging v1.0.0
+
+- [x] All 🔶 rows have a dated PASS in the Evidence column (Z1 live run, Z2 double run, Z4 rehearsal).
+- [x] #38 item 1: publish once to a Notion **database** destination. 2026-11-16: from the extension, video #1 into an inline database → `COMPLETED`, 100 s, 8/8 frames, title column `Name` found. The run first exposed a parsing bug (a data source's `"title": {}` schema broke search and `TitlePropertyName`), fixed in `internal/notion` with realistic test fixtures.
+- [x] Clean-machine rehearsal ≤ 15 min in Quick mode and in Full OAuth mode (Z4 steps 1–2), by the teammate who did not write the README. 2026-11-18: Om, Quick 11 min, Full OAuth 13 min.

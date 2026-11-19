@@ -80,7 +80,7 @@ type Worker struct {
 	LimiterMaxWait    time.Duration `env:"LIMITER_MAX_WAIT" envDefault:"60s"`
 	LLMRPDResetTZ     string        `env:"LLM_RPD_RESET_TZ" envDefault:"America/Los_Angeles"`
 
-	YouTubeRPS       float64 `env:"YOUTUBE_RPS" envDefault:"1"`
+	YouTubeRPS       float64 `env:"YOUTUBE_RPS" envDefault:"4"`
 	YtDlpCookiesFile string  `env:"YTDLP_COOKIES_FILE"`
 
 	MaxVideoSeconds     int           `env:"MAX_VIDEO_SECONDS" envDefault:"1200"`
@@ -95,6 +95,9 @@ type Worker struct {
 
 	NotionDefaultParentID string `env:"NOTION_DEFAULT_PARENT_ID"`
 	NotionMaxImageBytes   int    `env:"NOTION_MAX_IMAGE_BYTES" envDefault:"4500000"`
+	// NotionUploadReuseWindow is how long a frame's Notion file upload is
+	// reused on a rerun; Notion expires unattached uploads after ~1 h (FR-IDEM-5).
+	NotionUploadReuseWindow time.Duration `env:"NOTION_UPLOAD_REUSE_WINDOW" envDefault:"50m"`
 
 	MaxAttempts         int `env:"MAX_ATTEMPTS" envDefault:"5"`
 	MaxRateLimitRetries int `env:"MAX_RATE_LIMIT_RETRIES" envDefault:"8"`
@@ -182,6 +185,9 @@ func (c Common) validate() error {
 		if d <= 0 {
 			return errors.New("RETRY_DELAYS entries must be positive")
 		}
+		if d%time.Second != 0 {
+			return fmt.Errorf("RETRY_DELAYS entry %v must be a whole number of seconds (>= 1s)", d)
+		}
 	}
 	if err := positiveDur("AMQP_HEARTBEAT", c.AMQPHeartbeat); err != nil {
 		return err
@@ -223,7 +229,7 @@ func (g Gateway) validate() error {
 // providerDefaultModel lists providers with a built-in model default;
 // openrouter and claude require LLM_MODEL explicitly.
 var providerDefaultModel = map[string]string{
-	"gemini": "gemini-2.5-flash",
+	"gemini": "gemini-3.8-flash", // 2.5 models are limited to past users (Gemini API deprecations page)
 	"ollama": "llama3.2",
 	"groq":   "llama-3.3-70b-versatile",
 }
