@@ -542,7 +542,7 @@ Informational notes that do **not** trigger with-warnings are kept in `job_event
 
 ### 6.7 `GET /healthz`
 ```json
-200 {"status": "ok", "checks": {"postgres": "ok", "rabbitmq": "ok", "redis": "ok"}, "workers_alive": 2, "version": "1.0.0"}
+200 {"status": "ok", "checks": {"postgres": "ok", "rabbitmq": "ok", "redis": "ok"}, "workers_alive": 2, "version": "1.1.0"}
 503 {"status": "degraded", "checks": {"postgres": "ok", "rabbitmq": "error: connection refused", "redis": "ok"}, "workers_alive": 0}
 ```
 - **IR-API-30 (MUST)** Returns `200` only if Postgres (`SELECT 1`), RabbitMQ (channel open + passive declare of `jobs.work`), and Redis (`PING`) are all reachable within 2 s; else `503`.
