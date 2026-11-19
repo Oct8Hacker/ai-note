@@ -131,11 +131,11 @@ func (r *Repo) GetJobView(ctx context.Context, id uuid.UUID) (JobView, error) {
 	err := r.pool.QueryRow(ctx, `SELECT id, status, progress, video_id, video_title, duration_sec, warnings,
 		error_code, error_message, notion_page_url, frames_requested, frames_published,
 		waiting_reason, waiting_provider, next_attempt_at, COALESCE(next_attempt_at > now(), false),
-		attempts, created_at, updated_at FROM jobs WHERE id=$1`, id).
+		attempts, created_at, updated_at, `+canCancelSQL+` FROM jobs WHERE id=$1`, id, statusStrings(nonTerminal)).
 		Scan(&v.JobID, &status, &v.Progress, &v.VideoID, &v.VideoTitle, &v.DurationSec, &warnings,
 			&errCode, &errMsg, &pageURL, &framesReq, &framesPub,
 			&waitReason, &waitProvider, &nextAttempt, &stillWaiting,
-			&v.Attempt, &v.CreatedAt, &v.UpdatedAt)
+			&v.Attempt, &v.CreatedAt, &v.UpdatedAt, &v.CanCancel)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return JobView{}, ErrNotFound
 	}

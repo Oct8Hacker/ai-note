@@ -14,6 +14,7 @@ func TestStatusOrder(t *testing.T) {
 	_, ok = StatusPublishing.NextStage()
 	require.False(t, ok)
 	require.True(t, StatusDeadLettered.IsTerminal())
+	require.True(t, Status("CANCELLED").IsTerminal())
 	require.False(t, StatusPublishing.IsTerminal())
 }
 

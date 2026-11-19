@@ -250,6 +250,8 @@ The Notion token goes into the extension popup, not into either of those fields.
 4. Open the extension popup to follow progress.
 5. When processing finishes, click **View in Notion**.
 
+To stop a job, open the extension popup and click **Cancel** on its job card. You can cancel during processing or while waiting for a retry. Cancellation closes when the worker starts the request to create the Notion page. A cancelled job stays cancelled even when a delayed retry arrives.
+
 Start with a short lecture or tutorial for your first test.
 
 Processing time depends on the video, model availability, and rate limits. A job waiting for quota may take longer than one that can run immediately.
@@ -559,6 +561,12 @@ curl -X POST localhost:8080/jobs -H 'Content-Type: application/json' \
 
 ```bash
 curl localhost:8080/jobs/JOB_ID
+```
+
+**Cancel a job.** The job view's `can_cancel` flag shows whether cancellation is available. A successful request returns the updated job view with status `CANCELLED`. Repeating the request for a cancelled job returns the same status. A finished job or one that has started creating its page returns `409 JOB_NOT_CANCELLABLE`.
+
+```bash
+curl -X POST localhost:8080/jobs/JOB_ID/cancel
 ```
 
 **Results** of a finished job: `{"status", "result": {"notion_page_url", "frames_requested", "frames_published"}, "warnings"}`. Returns `409 JOB_NOT_FINISHED` until the job ends.

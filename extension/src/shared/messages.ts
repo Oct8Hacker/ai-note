@@ -30,6 +30,8 @@ const messages: Record<string, string> = {
   PAYLOAD_TOO_LARGE: "The request was too large.",
   UNSUPPORTED_MEDIA_TYPE: "The gateway couldn't read this request format.",
   JOB_NOT_FOUND: "This job could not be found.",
+  JOB_NOT_CANCELLABLE:
+    "This job has passed the point where it can be cancelled.",
   JOB_NOT_FINISHED: "Your notes are still being prepared.",
   UNAUTHORIZED: "You don't have access to this action.",
   INVALID_LIMIT: "Choose a positive number of jobs.",

@@ -81,6 +81,22 @@ func publishFixture(t *testing.T) (*Stage, *pipeline.Job, pipeline.Deps, *fakeNo
 	require.NoError(t, d.Store.SaveArtifact(context.Background(), j.ID, "synthesis", pipeline.Synthesis{Sections: []pipeline.Section{{Heading: "topic", EndSec: 10}}}))
 	return s, j, d, f
 }
+
+type rejectedCreate struct{ pipeline.CheckpointStore }
+
+func (rejectedCreate) MarkNotionCreateStarted(context.Context, uuid.UUID) error {
+	return context.Canceled
+}
+
+func TestCancelledCreateCheckpointPreventsNotionPage(t *testing.T) {
+	s, j, d, f := publishFixture(t)
+	d.Store = rejectedCreate{d.Store}
+	_, err := s.Run(context.Background(), j, d)
+	require.ErrorIs(t, err, context.Canceled)
+	require.Zero(t, f.creates)
+	require.Empty(t, f.body)
+}
+
 func TestContentConvergesAfterPartialWrite(t *testing.T) {
 	s, j, d, f := publishFixture(t)
 	ctx := context.Background()

@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
-import { afterEach, expect, it } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/preact";
+import { afterEach, expect, it, vi } from "vitest";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/preact";
 import { JobCard } from "./JobCard";
 import type { JobView, TrackedJob } from "../shared/types";
 afterEach(cleanup);
@@ -13,6 +19,7 @@ function card(last: Partial<JobView>) {
     results: null,
     last: {
       status: "QUEUED",
+      can_cancel: true,
       progress: 0,
       video_title: null,
       duration_sec: null,
@@ -51,6 +58,38 @@ it("StepTracker highlights the current step, labels earlier steps and shows coun
   );
   expect(screen.getByText(/retrying in 28 s/)).toBeTruthy();
   expect(screen.getByRole("progressbar").getAttribute("value")).toBe("40");
+});
+
+it("submits cancellation for a waiting job and reports a conflict", async () => {
+  const sendMessage = vi
+    .fn()
+    .mockResolvedValue({ ok: false, message: "Too late to cancel." });
+  vi.stubGlobal("chrome", { runtime: { sendMessage } });
+  card({
+    status: "SUMMARIZING",
+    waiting: { reason: "BUSY", next_attempt_at: new Date(1000).toISOString() },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Cancel job" }));
+  expect(sendMessage).toHaveBeenCalledWith({
+    type: "CANCEL_JOB",
+    jobId: "job",
+  });
+  expect((await screen.findByRole("alert")).textContent).toBe(
+    "Too late to cancel.",
+  );
+});
+
+it("hides cancellation after the gateway closes the cancellation window", () => {
+  card({ status: "PUBLISHING", can_cancel: false });
+  expect(screen.queryByRole("button", { name: "Cancel job" })).toBeNull();
+});
+
+it("labels cancellation as terminal and hides steps and actions", () => {
+  card({ status: "CANCELLED", can_cancel: false });
+  expect(screen.getByText("Cancelled")).toBeTruthy();
+  expect(screen.queryByRole("progressbar")).toBeNull();
+  expect(screen.queryByRole("button")).toBeNull();
+  expect(screen.queryByRole("link")).toBeNull();
 });
 it.each(["COMPLETED", "COMPLETED_WITH_WARNINGS"] as const)(
   "links %s to the exact result",

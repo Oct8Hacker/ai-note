@@ -1,4 +1,5 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
+import { cancelJob } from "./jobs";
 import { backgroundMock } from "../../test/background-mock";
 import {
   getJobs,
@@ -16,6 +17,52 @@ const job = {
   results: null,
   submittedAt: 0,
 };
+
+it("preserves a cancellation when a slow poll finishes and deduplicates cancel requests", async () => {
+  const { fetcher, badge, notify } = backgroundMock();
+  await upsertJob({ ...job, gatewayUrl: "http://original:8080" });
+  let finishPoll!: (response: Response) => void;
+  fetcher.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finishPoll = resolve;
+      }),
+  );
+  const poll = pollOnce(0);
+  await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+  fetcher.mockResolvedValueOnce(
+    Response.json({
+      status: "CANCELLED",
+      result: null,
+      warnings: [],
+      can_cancel: false,
+    }),
+  );
+  await Promise.all([cancelJob(job.jobId), cancelJob(job.jobId)]);
+  expect(fetcher.mock.calls[1][0]).toBe("http://original:8080/jobs/001/cancel");
+  expect(fetcher.mock.calls[1][1]).toMatchObject({ method: "POST" });
+  expect(fetcher.mock.calls[1][1]?.body).toBeUndefined();
+  finishPoll(Response.json({ status: "TRANSCRIBING" }));
+  await poll;
+  await pollOnce(2000);
+  expect((await getJobs())[0].results?.status).toBe("CANCELLED");
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  expect(badge).toHaveBeenLastCalledWith({ text: "" });
+  expect(notify).not.toHaveBeenCalled();
+});
+
+it("stops polling a cancellation observed on another client", async () => {
+  const { fetcher, notify } = backgroundMock();
+  await upsertJob(job);
+  fetcher.mockResolvedValueOnce(
+    Response.json({ status: "CANCELLED", result: null, warnings: [] }),
+  );
+  await pollOnce(0);
+  await pollOnce(2000);
+  expect((await getJobs())[0].results?.status).toBe("CANCELLED");
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(notify).not.toHaveBeenCalled();
+});
 
 it("keeps a new connection when a job from an older connection fails", async () => {
   const { fetcher } = backgroundMock();

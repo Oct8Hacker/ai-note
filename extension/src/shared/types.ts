@@ -7,12 +7,14 @@ export type Status =
   | "COMPLETED"
   | "COMPLETED_WITH_WARNINGS"
   | "FAILED"
+  | "CANCELLED"
   | "DEAD_LETTERED";
 export interface Warning {
   code: string;
   timestamp_sec?: number;
 }
 export interface JobView {
+  can_cancel: boolean;
   job_id: string;
   status: Status;
   progress: number;

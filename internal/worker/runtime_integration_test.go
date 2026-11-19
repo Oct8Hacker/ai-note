@@ -278,6 +278,46 @@ func TestHappyPathFakeStages(t *testing.T) {
 	require.Eventually(t, func() bool { return e.queueDepth() == 0 }, 5*time.Second, 100*time.Millisecond)
 }
 
+func TestCancelInterruptsStageAndAcknowledgesRedelivery(t *testing.T) {
+	e := newEnv(t)
+	s := newStages()
+	started, stopped := make(chan struct{}), make(chan struct{})
+	s.summarize.Hook = func(ctx context.Context) error {
+		if s.summarize.CallCount() > 1 {
+			return nil
+		}
+		close(started)
+		<-ctx.Done()
+		close(stopped)
+		return ctx.Err()
+	}
+	cfg := testConfig("cancel-worker")
+	cfg.LeaseTTL = time.Minute
+	e.start(cfg, s.byStatus())
+	m := e.publishNew("dQw4w9WgXcQ")
+	select {
+	case <-started:
+	case <-time.After(10 * time.Second):
+		t.Fatal("summarization did not start")
+	}
+	require.NoError(t, e.repo.CancelJob(context.Background(), m.JobID))
+	select {
+	case <-stopped:
+	case <-time.After(3 * time.Second):
+		t.Fatal("cancelled stage kept running")
+	}
+
+	// A retry already in RabbitMQ can arrive after the cancel has committed.
+	require.NoError(t, e.pub.PublishWork(context.Background(), m))
+	// With prefetch 1, reaching a subsequent job proves both deliveries settled.
+	other := e.publishNew("abcd1234xyz")
+	e.waitStatus(other.JobID, pipeline.StatusCompleted, 10*time.Second)
+	require.Equal(t, pipeline.StatusCancelled, e.view(m.JobID).Status)
+	require.Equal(t, 0, e.intCol(m.JobID, "attempts"))
+	require.Equal(t, 2, s.summarize.CallCount(), "each job entered summarization once")
+	require.Equal(t, 1, s.frames.CallCount(), "only the subsequent job extracted frames")
+}
+
 func TestNotionTokenOnlyForPublishing(t *testing.T) {
 	e := newEnv(t)
 	var mu sync.Mutex

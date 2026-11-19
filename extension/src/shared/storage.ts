@@ -52,6 +52,23 @@ export async function getJobs(): Promise<TrackedJob[]> {
   const { jobs } = await chrome.storage.local.get("jobs");
   return jobs ?? [];
 }
+
+// A late network response must not revive a finished or cleared job.
+export function updateUnfinishedJob(
+  id: string,
+  changes: Partial<
+    Pick<TrackedJob, "gatewayUrl" | "title" | "last" | "results">
+  >,
+): Promise<boolean> {
+  return navigator.locks.request("ai-note:jobs", async () => {
+    const jobs = await getJobs();
+    const current = jobs.find((job) => job.jobId === id);
+    if (!current || current.results) return false;
+    Object.assign(current, changes);
+    await chrome.storage.local.set({ jobs });
+    return true;
+  });
+}
 export async function upsertJob(job: TrackedJob): Promise<void> {
   await navigator.locks.request("ai-note:jobs", async () => {
     const jobs = (await getJobs()).filter((entry) => entry.jobId !== job.jobId);

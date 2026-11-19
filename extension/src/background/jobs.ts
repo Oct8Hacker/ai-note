@@ -1,6 +1,11 @@
-import { GatewayClient } from "../shared/api";
-import { getJobs, getSettings, upsertJob } from "../shared/storage";
-import type { Status } from "../shared/types";
+import { ApiError, GatewayClient } from "../shared/api";
+import {
+  getJobs,
+  getSettings,
+  updateUnfinishedJob,
+  upsertJob,
+} from "../shared/storage";
+import type { JobView, Status, TrackedJob } from "../shared/types";
 import { connectWithOAuth, friendlyError } from "./auth";
 
 export function isTerminal(status?: Status) {
@@ -8,8 +13,53 @@ export function isTerminal(status?: Status) {
     status === "COMPLETED" ||
     status === "COMPLETED_WITH_WARNINGS" ||
     status === "FAILED" ||
+    status === "CANCELLED" ||
     status === "DEAD_LETTERED"
   );
+}
+
+export function saveJobView(
+  job: TrackedJob,
+  gatewayUrl: string,
+  last: JobView,
+) {
+  return updateUnfinishedJob(job.jobId, {
+    gatewayUrl,
+    title: last.video_title ?? job.title,
+    last,
+    ...(last.status === "CANCELLED" && {
+      results: { status: last.status, warnings: last.warnings, result: null },
+    }),
+  });
+}
+
+const pendingCancellations = new Map<string, Promise<void>>();
+
+export function cancelJob(id: string): Promise<void> {
+  const pending = pendingCancellations.get(id);
+  if (pending) return pending;
+  const request = cancelTrackedJob(id).finally(() => {
+    pendingCancellations.delete(id);
+  });
+  pendingCancellations.set(id, request);
+  return request;
+}
+
+async function cancelTrackedJob(id: string) {
+  const { gatewayUrl } = await getSettings();
+  const job = (await getJobs()).find((item) => item.jobId === id);
+  if (!job) throw new ApiError("JOB_NOT_FOUND", 404);
+  if (job.last?.status === "CANCELLED") return;
+  if (
+    job.results ||
+    isTerminal(job.last?.status) ||
+    job.last?.can_cancel === false
+  )
+    throw new ApiError("JOB_NOT_CANCELLABLE", 409);
+  const origin = job.gatewayUrl ?? gatewayUrl;
+  const last = await new GatewayClient(origin).cancelJob(id);
+  await saveJobView(job, origin, last);
+  await updateBadge().catch(() => {});
 }
 
 export async function updateBadge() {

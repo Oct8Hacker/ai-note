@@ -4,7 +4,7 @@ import {
   disconnect,
   friendlyError,
 } from "./auth";
-import { takeNotes } from "./jobs";
+import { cancelJob, takeNotes } from "./jobs";
 import { openJobResult, pollOnce, startFastPolling } from "./poller";
 
 async function ensureAlarm() {
@@ -31,6 +31,10 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
   } else {
     if (!sender.url?.startsWith(chrome.runtime.getURL(""))) return;
     switch (message?.type) {
+      case "CANCEL_JOB":
+        if (typeof message.jobId !== "string") return;
+        action = cancelJob(message.jobId);
+        break;
       case "CONNECT_OAUTH":
         action = connectWithOAuth();
         break;

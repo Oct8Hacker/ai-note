@@ -205,5 +205,5 @@ func (r *Repo) PurgeFrameImages(ctx context.Context, olderThan time.Duration) (i
 
 var terminalStatuses = []pipeline.Status{
 	pipeline.StatusCompleted, pipeline.StatusCompletedWithWarnings,
-	pipeline.StatusFailed, pipeline.StatusDeadLettered,
+	pipeline.StatusFailed, pipeline.StatusDeadLettered, pipeline.StatusCancelled,
 }

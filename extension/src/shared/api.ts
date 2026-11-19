@@ -64,6 +64,14 @@ export class GatewayClient {
   getJob(id: string) {
     return this.request<JobView>("/jobs/" + encodeURIComponent(id));
   }
+  cancelJob(id: string) {
+    return this.request<JobView>(
+      "/jobs/" + encodeURIComponent(id) + "/cancel",
+      {
+        method: "POST",
+      },
+    );
+  }
   async getResults(id: string): Promise<ResultsView | "NOT_FINISHED"> {
     try {
       return await this.request<ResultsView>(

@@ -1,23 +1,25 @@
 import { GatewayClient } from "../shared/api";
 import { errorMessage, summarizeWarnings } from "../shared/messages";
-import { getJobs, getSettings, upsertJob } from "../shared/storage";
+import { getJobs, getSettings, updateUnfinishedJob } from "../shared/storage";
 import type { TrackedJob } from "../shared/types";
 import { disconnect } from "./auth";
-import { isTerminal, updateBadge } from "./jobs";
+import { isTerminal, saveJobView, updateBadge } from "./jobs";
 
-async function refresh(client: GatewayClient, job: TrackedJob) {
+async function refresh(origin: string, job: TrackedJob) {
   if (job.results) return;
+  const client = new GatewayClient(origin);
   if (!isTerminal(job.last?.status)) {
     const last = await client.getJob(job.jobId);
+    if (!(await saveJobView(job, origin, last)) || last.status === "CANCELLED")
+      return;
     if (last.error?.code === "NOTION_UNAUTHORIZED")
       await disconnect(job.notionConnectionId ?? null);
     job = { ...job, title: last.video_title ?? job.title, last };
-    await upsertJob(job);
     if (!isTerminal(last.status)) return;
   }
   const results = await client.getResults(job.jobId);
   if (results === "NOT_FINISHED") return;
-  await upsertJob({ ...job, results });
+  if (!(await updateUnfinishedJob(job.jobId, { results }))) return;
   const success =
     results.status === "COMPLETED" ||
     results.status === "COMPLETED_WITH_WARNINGS";
@@ -45,10 +47,7 @@ export function pollOnce(_now: number): Promise<void> {
     await Promise.allSettled(
       (await getJobs()).map((job) => {
         const origin = job.gatewayUrl ?? gatewayUrl;
-        return refresh(new GatewayClient(origin), {
-          ...job,
-          gatewayUrl: origin,
-        });
+        return refresh(origin, job);
       }),
     );
     await updateBadge();
