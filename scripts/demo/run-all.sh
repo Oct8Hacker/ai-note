@@ -39,9 +39,11 @@ mkdir -p tmp
 log="tmp/demo-round-$(date +%Y%m%d-%H%M%S).log"
 
 if [ "${1:-}" = "--fresh" ]; then
-  echo "== wiping the stack (down -v) and starting it with the demo profile"
+  echo "== wiping the stack (down -v), building it from this checkout and starting it with the demo profile"
   compose down -v >>"$log" 2>&1
-  compose --env-file deploy/demo.env up -d >>"$log" 2>&1 || { echo "compose up failed; see $log"; exit 1; }
+  # --build: without it compose reuses any cached gateway/worker image, and the
+  # round would test old code.
+  compose --env-file deploy/demo.env up -d --build >>"$log" 2>&1 || { echo "compose up failed; see $log"; exit 1; }
   for _ in $(seq 1 60); do
     [ "$(curl -s localhost:8080/healthz | jq -r '.workers_alive // 0' 2>/dev/null)" = 2 ] && break
     sleep 3
