@@ -12,7 +12,7 @@ The shared rules are in `AGENTS.md` above. These additions apply to Claude Code,
 
 ## Git (Aryan's commits)
 
-- A and Z tasks and repo docs are committed straight to `build/v1` and pushed after review. Close the task's issue and check CI.
+- A and Z tasks and repo docs are committed straight to `main` and pushed after review. Close the task's issue and check CI.
 - End every commit with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 - Never merge a PR without Aryan's say-so.
 - **Never commit `docs/LEARNING-RESOURCES.md`** (kept local on purpose).

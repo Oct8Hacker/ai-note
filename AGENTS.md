@@ -8,7 +8,7 @@ This is a two-person final-year project, due **20 Nov 2026**. The humans must be
 | Tasks | A1–A12: **all done and merged** | B1–B16: **all done and merged** (Om, PRs #29–#37, #39–#45) |
 | Packages | `internal/{config,api,jobs,queue,outbox,worker,dlqwatch,ratelimit,faults,health,crypto}`, `cmd/`, `deploy/`, `migrations/` | `internal/youtube`, `internal/llm`, `internal/notion`, `internal/pipeline/{transcript,synthesis,frames,publish}`, `internal/doctor`, `extension/` |
 
-Z1–Z4 (integration, demo, release) are joint and in progress: code and docs are on `build/v1`; the live runs and the clean-machine rehearsal remain (see `docs/acceptance.md`). Bug fixes found during Z go in the owning package with a regression test.
+Z1–Z4 (integration, demo, release) are done: every acceptance row in `docs/acceptance.md` passed, and the latest release is v1.1.0. The code is on `main`. Bug fixes found during Z go in the owning package with a regression test.
 
 **Read first:** `docs/SRS.md` (what we build; requirement IDs FR-…, IR-…), `docs/tasks/README.md` (task list and GitHub issue numbers), then the task file `docs/tasks/<ID>.md`.
 
@@ -74,7 +74,7 @@ Since Z1 the worker runs the **real stages**, built by `realStages()` in `cmd/wo
 - `cmd/gateway/main.go`, `cmd/worker/main.go`, `internal/api/server.go`, `internal/config/`.
 - B10 adds a `Notion NotionGateway` field to `api.ServerDeps` and registers its routes only when it is non-nil. That is the same pattern `Admin` and `Faults` already use in `internal/api/server.go`.
 - B11 edits both `main.go` files.
-- For both, `git pull --rebase origin build/v1` right before starting, and say in the PR that Track A files changed.
+- For both, `git pull --rebase origin main` right before starting, and say in the PR that Track A files changed.
 
 ## Codex notes
 
@@ -88,7 +88,6 @@ Since Z1 the worker runs the **real stages**, built by `realStages()` in `cmd/wo
 ```bash
 git clone https://github.com/Oct8Hacker/ai-note.git
 cd ai-note
-git switch build/v1
 go test ./...                        # unit tests
 go test -tags=integration -p 1 ./... # integration tests (Docker must be running)
 bash scripts/lint.sh                 # lint exactly as CI runs it
@@ -101,11 +100,11 @@ curl localhost:8080/healthz
 
 - **Order:** B1 → B2 → B3 → B4 → B5 → B6 → B7 → B8 → B9. The extension tasks (B12 → B13 → B14 → B15) are independent and can come any time. B16 comes after B3, B10 after B7, and B11 after B1 and B3.
 - **One branch per task:** `task/bN`.
-  - Start it from the latest `build/v1`.
-  - If the task needs an earlier B task whose PR isn't merged yet, start from that task's branch instead. After the earlier PR merges, run `git rebase origin/build/v1`.
+  - Start it from the latest `main`.
+  - If the task needs an earlier B task whose PR isn't merged yet, start from that task's branch instead. After the earlier PR merges, run `git rebase origin/main`.
 - **Commits are Om's own** (his normal git identity). Use conventional messages: `feat(transcript): …`, `fix(…)`, `test(…)`, `docs(…)`. End each AI-written commit with `Co-Authored-By: Codex <noreply@openai.com>`.
-- **PRs:** open a PR into `build/v1` with `Closes #<issue>` in the description. CI must be green, and Aryan reviews before merge. Merge with a **merge commit or rebase**; squash is disabled.
+- **PRs:** open a PR into `main` with `Closes #<issue>` in the description. CI must be green, and Aryan reviews before merge. Merge with a **merge commit or rebase**; squash is disabled.
 - **`go.sum` conflicts:** after rebasing, run `go mod tidy` and commit. Never hand-edit `go.sum`.
 - **Task status:** don't edit the status column in `docs/tasks/README.md`. The merged PR closes the issue, and Aryan updates the table.
 - Stage files by explicit path (`git add path/to/file`), never `git add -A` or `git add .`.
-- Never force-push to `build/v1`, and never push to `main`.
+- Never force-push to `main`.

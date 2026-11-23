@@ -42,7 +42,6 @@ Open PowerShell on Windows, or Terminal on macOS/Linux:
 ```sh
 git clone https://github.com/Oct8Hacker/ai-note.git
 cd ai-note
-git switch build/v1
 ```
 
 Keep this terminal open for the following steps.
@@ -303,7 +302,7 @@ docker compose -f deploy/docker-compose.yml --env-file .env exec -T worker /app/
 
 If you explicitly configured `LLM_VISION_PROVIDER` or `LLM_VISION_MODEL`, check those settings as well. Otherwise, frame verification uses the main provider and model.
 
-All supported settings are documented in [`.env.example`](https://github.com/Oct8Hacker/ai-note/blob/build/v1/.env.example).
+All supported settings are documented in [`.env.example`](https://github.com/Oct8Hacker/ai-note/blob/main/.env.example).
 
 ## Troubleshooting
 
@@ -725,7 +724,7 @@ npm --prefix extension run build
 
 Further documentation:
 
-- [System requirements and specification](https://github.com/Oct8Hacker/ai-note/blob/build/v1/docs/SRS.md)
-- [Demo runbook and failure scenarios](https://github.com/Oct8Hacker/ai-note/blob/build/v1/docs/demo-runbook.md)
-- [Task breakdown](https://github.com/Oct8Hacker/ai-note/blob/build/v1/docs/tasks/README.md)
-- [Instructions for coding agents](https://github.com/Oct8Hacker/ai-note/blob/build/v1/AGENTS.md)
+- [System requirements and specification](https://github.com/Oct8Hacker/ai-note/blob/main/docs/SRS.md)
+- [Demo runbook and failure scenarios](https://github.com/Oct8Hacker/ai-note/blob/main/docs/demo-runbook.md)
+- [Task breakdown](https://github.com/Oct8Hacker/ai-note/blob/main/docs/tasks/README.md)
+- [Instructions for coding agents](https://github.com/Oct8Hacker/ai-note/blob/main/AGENTS.md)
